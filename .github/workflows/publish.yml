@@ -64,11 +64,13 @@ jobs:
           --nologo \
           --self-contained \
           -r ${{ matrix.os }} \
+          -p:PublishSelfContained=true \
           -p:PublishSingleFile=true \
           -p:DebugType=embedded \
           -p:IncludeNativeLibrariesForSelfExtract=true \
-          -p:PublishTrimmed=true \
+          -p:PublishTrimmed=false \
           -p:EnableCompressionInSingleFile=true \
+          -p:SuppressTrimAnalysisWarnings=true \
           -o ./artifacts/${{ matrix.os }}
 
     - name: Create artifact name
@@ -80,6 +82,22 @@ jobs:
         else
           echo "EXECUTABLE_NAME=gemini-tts-cli" >> $GITHUB_OUTPUT
           echo "ARCHIVE_NAME=gemini-tts-cli-${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}.tar.gz" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Verify build output
+      run: |
+        echo "Checking build output in ./artifacts/${{ matrix.os }}/"
+        ls -la ./artifacts/${{ matrix.os }}/
+        if [[ "${{ matrix.os }}" == win-* ]]; then
+          if [ ! -f "./artifacts/${{ matrix.os }}/gemini-tts-cli.exe" ]; then
+            echo "Error: gemini-tts-cli.exe not found!"
+            exit 1
+          fi
+        else
+          if [ ! -f "./artifacts/${{ matrix.os }}/gemini-tts-cli" ]; then
+            echo "Error: gemini-tts-cli executable not found!"
+            exit 1
+          fi
         fi
 
     - name: Create Windows archive
@@ -132,6 +150,7 @@ jobs:
 
     - name: Publish to NuGet
       run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      continue-on-error: true
 
   create-release:
     runs-on: ubuntu-latest
