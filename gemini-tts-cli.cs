@@ -1,5 +1,5 @@
 ﻿
-// dotnet run -- GeminiTtsCli.cs --instructions @script.txt --speaker1 zephyr --speaker2 puck
+// dotnet run -- --text "Hello world" [--instructions "Custom instructions"] [--speaker1 zephyr] [--outputfile output.wav]
 
 using System.CommandLine;
 using System.CommandLine.Invocation;
@@ -7,55 +7,87 @@ using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+
 using NAudio.Wave;
 
-// ---------- 參數與常數 ----------
+// ---------- Parameters and constants ----------
 const string ModelId = "gemini-2.5-flash-preview-tts";
 const string ApiPath = "streamGenerateContent";
 const int SampleHz = 24_000; // 24 kHz
 const int Bits = 16;
 const int Channels = 1;
 
-var allowedVoices = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-{
-   // 女性
-    "achernar","aoede","autonoe","callirrhoe","despina","erinome","gacrux","kore",
-    "laomedeia","leda","sulafat","zephyr",
-    "pulcherrima","vindemiatrix",
-    // 男性
-    "achird","algenib","algieba","alnilam","charon","enceladus","fenrir","iapetus",
-    "orus","puck","rasalgethi","sadachbia","sadaltager","schedar","umbriel","zubenelgenubi",
-};
+// Voice categorization
+var femaleVoices = new[] { "achernar", "aoede", "autonoe", "callirrhoe", "despina", "erinome", "gacrux", "kore", "laomedeia", "leda", "sulafat", "zephyr", "pulcherrima", "vindemiatrix" };
+var maleVoices = new[] { "achird", "algenib", "algieba", "alnilam", "charon", "enceladus", "fenrir", "iapetus", "orus", "puck", "rasalgethi", "sadachbia", "sadaltager", "schedar", "umbriel", "zubenelgenubi" };
 
-// ---------- CLI 介面 ----------
-var instructionsOpt = new Option<string>("--instructions", "輸入指引文字(必填)") { IsRequired = true };
-var speaker1Opt = new Option<string>("--speaker1", "Speaker 1 的 voice name(必填)") { IsRequired = true };
-var textOpt = new Option<string>("--text", "要 TTS 的文字(必填)") { IsRequired = true };
-var outputOpt = new Option<string>("--outputfile", () => "output.wav", "輸出 WAV 檔名(預設 output.wav)");
+var allowedVoices = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+allowedVoices.UnionWith(femaleVoices);
+allowedVoices.UnionWith(maleVoices);
 
-var root = new RootCommand("Gemini TTS CLI");
+// ---------- CLI Interface ----------
+var voiceList = string.Join(", ", allowedVoices.OrderBy(v => v));
+var instructionsOpt = new Option<string>("--instructions", () => "Read aloud in a warm, professional and friendly tone", "Input instruction text (optional)");
+instructionsOpt.AddAlias("-i");
+var speaker1Opt = new Option<string>("--speaker1", () => allowedVoices.OrderBy(x => Guid.NewGuid()).First(), $"Speaker 1 voice name (optional, random if not specified)\nAvailable voices: {voiceList}");
+speaker1Opt.AddAlias("-s");
+var textOpt = new Option<string>("--text", "Text to convert to speech (required)") { IsRequired = true };
+textOpt.AddAlias("-t");
+var outputOpt = new Option<string>("--outputfile", () => "output.wav", "Output WAV filename (default: output.wav)");
+outputOpt.AddAlias("-o");
+
+var root = new RootCommand("Gemini TTS CLI - Convert text to speech using Google Gemini API");
 root.AddOption(instructionsOpt);
 root.AddOption(speaker1Opt);
 root.AddOption(textOpt);
 root.AddOption(outputOpt);
 
+// Add list-voices command
+var listVoicesCommand = new Command("list-voices", "List all available voices");
+listVoicesCommand.SetHandler(() =>
+{
+    Console.WriteLine("Available voice list:");
+    Console.WriteLine("Female voices:");
+    foreach (var voice in femaleVoices.OrderBy(v => v))
+    {
+        Console.WriteLine($"  {voice}");
+    }
+
+    Console.WriteLine("\nMale voices:");
+    foreach (var voice in maleVoices.OrderBy(v => v))
+    {
+        Console.WriteLine($"  {voice}");
+    }
+});
+root.AddCommand(listVoicesCommand);
+
 root.SetHandler(async (string instructions, string speaker1, string text, string output) =>
 {
-    // 組成傳給 Gemini TTS 的指令
-    instructions = instructions + "\n\nSpeaker 1: " + text;
+    if (instructions.Contains(":"))
+    {
+        instructions = instructions.Replace(":", "");
+    }
 
-    System.Console.WriteLine($"📜 指令: {instructions}");
+    // Determine voice gender
+    var voiceGender = femaleVoices.Contains(speaker1, StringComparer.OrdinalIgnoreCase) ? "Female" : "Male";
 
-    // ---------- 檢查環境變數 ----------
+    System.Console.WriteLine($"📜 Instructions: {instructions}");
+    System.Console.WriteLine($"🎤 Select voice: {speaker1} ({voiceGender})");
+    System.Console.WriteLine($"📝 The TTS Text: {text}");
+
+    // Compose the instruction for Gemini TTS
+    string prompt = instructions + ": " + text;
+
+    // ---------- Check environment variables ----------
     var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
     if (string.IsNullOrWhiteSpace(apiKey))
-        throw new InvalidOperationException("請先在環境變數 GEMINI_API_KEY 儲存 API 金鑰");
+        throw new InvalidOperationException("Please set the API key in the GEMINI_API_KEY environment variable");
 
-    // ---------- 驗證聲音 ----------
+    // ---------- Validate voice ----------
     if (!allowedVoices.Contains(speaker1))
-        throw new ArgumentException($"Speaker1 不合法: {speaker1}");
+        throw new ArgumentException($"Invalid Speaker1: {speaker1}");
 
-    // ---------- 組 JSON ----------
+    // ---------- Compose JSON ----------
     var payload = new
     {
         contents = new[]
@@ -63,7 +95,7 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
             new
             {
                 role  = "user",
-                parts = new[] { new { text = instructions } }
+                parts = new[] { new { text = prompt } }
             }
         },
         generationConfig = new
@@ -101,7 +133,7 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
     // }
     // Console.WriteLine("====================");
 
-    // ---------- 呼叫 API ----------
+    // ---------- Call API ----------
     const int maxRetries = 3;
     int attempt = 0;
     Exception? lastException = null;
@@ -110,13 +142,30 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
 
     while (attempt < maxRetries)
     {
+        string json = string.Empty;
         try
         {
             using var res = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
             res.EnsureSuccessStatusCode();
 
-            var json = await res.Content.ReadAsStringAsync();
+            json = await res.Content.ReadAsStringAsync();
+
+            // Console.WriteLine($"🎃 JSON: {json}");
+
             using var doc = JsonDocument.Parse(json);
+
+            var finishReason = doc.RootElement[0]
+                          .GetProperty("candidates")[0]
+                          .GetProperty("finishReason");
+
+            if (finishReason.GetString() != "STOP")
+            {
+                Console.WriteLine($"⚠️ Exception occurred, retry attempt {attempt}: Gemini refused to generate audio\n{json}");
+                attempt++;
+                await Task.Delay(1000);
+                continue; // 不是 STOP，重試
+            }
+
             base64 = doc.RootElement[0]
                           .GetProperty("candidates")[0]
                           .GetProperty("content")
@@ -126,7 +175,7 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
                           .GetString();
 
             if (string.IsNullOrWhiteSpace(base64))
-                throw new InvalidOperationException("API 回傳空白音訊資料");
+                throw new InvalidOperationException("API returned empty audio data");
 
             pcmBytes = Convert.FromBase64String(base64);
             break; // 成功則跳出 retry 迴圈
@@ -134,29 +183,35 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
         catch (Exception ex)
         {
             lastException = ex;
-            attempt++;
             if (attempt < maxRetries)
             {
-                Console.WriteLine($"⚠️ 發生例外，重試第 {attempt} 次: {ex.Message}");
+                Console.WriteLine($"⚠️ Exception occurred, retry attempt {attempt+1}: {json}");
                 await Task.Delay(1000);
             }
+            attempt++;
         }
     }
 
     if (pcmBytes == null)
-        throw new InvalidOperationException($"API 失敗超過 {maxRetries} 次", lastException);
+    {
+        // throw new InvalidOperationException($"API failed more than {maxRetries} times", lastException);
+        Console.WriteLine($"⚠️ API failed more than {maxRetries} times");
+    }
+    else
+    {
+        // ---------- Convert RAW to WAV ----------
+        using var ms = new MemoryStream(pcmBytes);
+        using var raw = new RawSourceWaveStream(ms, new WaveFormat(SampleHz, Bits, Channels));
+        WaveFileWriter.CreateWaveFile(output, raw);
 
-    // ---------- RAW 轉 WAV ----------
-    using var ms = new MemoryStream(pcmBytes);
-    using var raw = new RawSourceWaveStream(ms, new WaveFormat(SampleHz, Bits, Channels));
-    WaveFileWriter.CreateWaveFile(output, raw);
+        Console.WriteLine($"✅ Generated {output}");
+    }
 
-    Console.WriteLine($"✅ 已產生 {output}");
 }, instructionsOpt, speaker1Opt, textOpt, outputOpt);
 
-// ---------- 執行 ----------
+// ---------- Execute ----------
 return await root.InvokeAsync(args);
 
-// ---------- 協助函式 ----------
+// ---------- Helper functions ----------
 static string Capitalize(string voice) =>
     char.ToUpper(voice[0], CultureInfo.InvariantCulture) + voice[1..].ToLowerInvariant();
