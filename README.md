@@ -74,7 +74,11 @@ gemini-tts --instructions "Your instructions" --speaker1 <voice-name> --text "Te
 - achird, algenib, algieba, alnilam, charon, enceladus, fenrir, iapetus
 - orus, puck, rasalgethi, sadachbia, sadaltager, schedar, umbriel, zubenelgenubi
 
-### Example
+### Examples
+
+```bash
+gemini-tts --instructions "Read aloud in a warm, professional and friendly tone" --speaker1 achird --text "大家好，我是 Will 保哥。" --outputfile my-name-is-will.wav
+```
 
 ```bash
 gemini-tts --instructions "Please speak clearly and naturally" --speaker1 zephyr --text "Hello, this is a test of the Gemini TTS system" --outputfile greeting.wav
