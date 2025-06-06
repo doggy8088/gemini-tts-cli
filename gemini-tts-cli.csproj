@@ -6,8 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
-    <!-- Global Tool Configuration -->
-    <PackAsTool>true</PackAsTool>
+    <!-- Global Tool Configuration (disabled for self-contained deployment) -->
+    <PackAsTool Condition="'$(PublishSelfContained)' != 'true'">true</PackAsTool>
     <ToolCommandName>gemini-tts</ToolCommandName>
 
     <!-- Package Metadata -->
@@ -21,8 +21,10 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/doggy8088/gemini-tts-cli</PackageProjectUrl>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
 
-    <!-- Self-contained deployment properties -->
+  <!-- Self-contained deployment configuration (used only for publish, not for tool packaging) -->
+  <PropertyGroup Condition="'$(PublishSelfContained)' == 'true'">
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>

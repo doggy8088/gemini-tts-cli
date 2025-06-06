@@ -91,6 +91,42 @@ gemini-tts --instructions "Please speak clearly and naturally" --speaker1 zephyr
 
 ### Publishing
 
+The project supports two types of builds:
+
+#### 1. Global Tool (for NuGet distribution)
+
+```bash
+dotnet pack --configuration Release
+```
+
+This creates a .NET global tool package that can be installed via `dotnet tool install -g GeminiTtsCli`.
+
+#### 2. Self-Contained Executables (for standalone distribution)
+
+For Windows x64:
+
+```bash
+dotnet publish --configuration Release --self-contained true --runtime win-x64 -p:PublishSelfContained=true
+```
+
+For Linux x64:
+
+```bash
+dotnet publish --configuration Release --self-contained true --runtime linux-x64 -p:PublishSelfContained=true
+```
+
+For macOS x64:
+
+```bash
+dotnet publish --configuration Release --self-contained true --runtime osx-x64 -p:PublishSelfContained=true
+```
+
+For macOS ARM64:
+
+```bash
+dotnet publish --configuration Release --self-contained true --runtime osx-arm64 -p:PublishSelfContained=true
+```
+
 The project includes automated GitHub Actions workflows for:
 
 - Building cross-platform binaries
@@ -100,8 +136,8 @@ The project includes automated GitHub Actions workflows for:
 To trigger a release, create and push a git tag:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 ## License
