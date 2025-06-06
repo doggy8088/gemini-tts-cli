@@ -1,0 +1,184 @@
+name: Build and Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish'
+        required: true
+        default: '1.0.0'
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: win-x64
+            name: Windows x64
+          - os: linux-x64
+            name: Linux x64
+          - os: linux-arm64
+            name: Linux ARM64
+          - os: osx-x64
+            name: macOS x64
+          - os: osx-arm64
+            name: macOS ARM64
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Get version from tag or input
+      id: get_version
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Update project version
+      run: |
+        sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.get_version.outputs.VERSION }}<\/Version>/" gemini-tts-cli/gemini-tts-cli.csproj
+
+    - name: Restore dependencies
+      run: dotnet restore gemini-tts-cli/gemini-tts-cli.csproj
+
+    - name: Build and publish for ${{ matrix.name }}
+      run: |
+        dotnet publish gemini-tts-cli/gemini-tts-cli.csproj \
+          -c Release \
+          --nologo \
+          --self-contained \
+          -r ${{ matrix.os }} \
+          -p:PublishSingleFile=true \
+          -p:DebugType=embedded \
+          -p:IncludeNativeLibrariesForSelfExtract=true \
+          -p:PublishTrimmed=true \
+          -p:EnableCompressionInSingleFile=true \
+          -o ./artifacts/${{ matrix.os }}
+
+    - name: Create artifact name
+      id: artifact_name
+      run: |
+        if [[ "${{ matrix.os }}" == win-* ]]; then
+          echo "EXECUTABLE_NAME=gemini-tts-cli.exe" >> $GITHUB_OUTPUT
+          echo "ARCHIVE_NAME=gemini-tts-cli-${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}.zip" >> $GITHUB_OUTPUT
+        else
+          echo "EXECUTABLE_NAME=gemini-tts-cli" >> $GITHUB_OUTPUT
+          echo "ARCHIVE_NAME=gemini-tts-cli-${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}.tar.gz" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create Windows archive
+      if: startsWith(matrix.os, 'win-')
+      run: |
+        cd ./artifacts/${{ matrix.os }}
+        zip -r ../../${{ steps.artifact_name.outputs.ARCHIVE_NAME }} *
+
+    - name: Create Unix archive
+      if: "!startsWith(matrix.os, 'win-')"
+      run: |
+        cd ./artifacts/${{ matrix.os }}
+        tar -czf ../../${{ steps.artifact_name.outputs.ARCHIVE_NAME }} *
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: gemini-tts-cli-${{ matrix.os }}
+        path: ${{ steps.artifact_name.outputs.ARCHIVE_NAME }}
+
+  publish-nuget:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-publish
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Get version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Update project version
+      run: |
+        sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.get_version.outputs.VERSION }}<\/Version>/" gemini-tts-cli/gemini-tts-cli.csproj
+
+    - name: Restore dependencies
+      run: dotnet restore gemini-tts-cli/gemini-tts-cli.csproj
+
+    - name: Build
+      run: dotnet build gemini-tts-cli/gemini-tts-cli.csproj --configuration Release --no-restore
+
+    - name: Pack
+      run: dotnet pack gemini-tts-cli/gemini-tts-cli.csproj --configuration Release --no-build --output ./nupkg
+
+    - name: Publish to NuGet
+      run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  create-release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-publish
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./release-artifacts
+
+    - name: Get version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.get_version.outputs.VERSION }}
+        name: Release v${{ steps.get_version.outputs.VERSION }}
+        draft: false
+        prerelease: false
+        files: ./release-artifacts/**/*
+        body: |
+          ## What's Changed
+
+          ### Installation
+
+          #### Via .NET Global Tool (Recommended)
+          ```bash
+          dotnet tool install -g GeminiTtsCli
+          ```
+
+          #### Manual Installation
+          Download the appropriate binary for your platform from the assets below.
+
+          ### Usage
+          ```bash
+          gemini-tts --instructions "Your instructions" --speaker1 zephyr --text "Text to convert to speech"
+          ```
+
+          ### Requirements
+          - Set the `GEMINI_API_KEY` environment variable with your Google AI Studio API key
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/v${{ steps.get_version.outputs.VERSION }}...HEAD
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
