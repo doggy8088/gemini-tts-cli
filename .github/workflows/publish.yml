@@ -52,14 +52,14 @@ jobs:
 
     - name: Update project version
       run: |
-        sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.get_version.outputs.VERSION }}<\/Version>/" gemini-tts-cli/gemini-tts-cli.csproj
+        sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.get_version.outputs.VERSION }}<\/Version>/" gemini-tts-cli.csproj
 
     - name: Restore dependencies
-      run: dotnet restore gemini-tts-cli/gemini-tts-cli.csproj
+      run: dotnet restore gemini-tts-cli.csproj
 
     - name: Build and publish for ${{ matrix.name }}
       run: |
-        dotnet publish gemini-tts-cli/gemini-tts-cli.csproj \
+        dotnet publish gemini-tts-cli.csproj \
           -c Release \
           --nologo \
           --self-contained \
@@ -89,7 +89,7 @@ jobs:
         zip -r ../../${{ steps.artifact_name.outputs.ARCHIVE_NAME }} *
 
     - name: Create Unix archive
-      if: "!startsWith(matrix.os, 'win-')"
+      if: ${{ !startsWith(matrix.os, 'win-') }}
       run: |
         cd ./artifacts/${{ matrix.os }}
         tar -czf ../../${{ steps.artifact_name.outputs.ARCHIVE_NAME }} *
@@ -119,16 +119,16 @@ jobs:
 
     - name: Update project version
       run: |
-        sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.get_version.outputs.VERSION }}<\/Version>/" gemini-tts-cli/gemini-tts-cli.csproj
+        sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.get_version.outputs.VERSION }}<\/Version>/" gemini-tts-cli.csproj
 
     - name: Restore dependencies
-      run: dotnet restore gemini-tts-cli/gemini-tts-cli.csproj
+      run: dotnet restore gemini-tts-cli.csproj
 
     - name: Build
-      run: dotnet build gemini-tts-cli/gemini-tts-cli.csproj --configuration Release --no-restore
+      run: dotnet build gemini-tts-cli.csproj --configuration Release --no-restore
 
     - name: Pack
-      run: dotnet pack gemini-tts-cli/gemini-tts-cli.csproj --configuration Release --no-build --output ./nupkg
+      run: dotnet pack gemini-tts-cli.csproj --configuration Release --no-build --output ./nupkg
 
     - name: Publish to NuGet
       run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
