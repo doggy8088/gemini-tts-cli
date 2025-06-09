@@ -1,0 +1,65 @@
+{
+    "version": "0.2.0",
+    "description": "A CLI tool for text-to-speech using Google Gemini TTS API",
+    "homepage": "https://github.com/doggy8088/gemini-tts-cli",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/doggy8088/gemini-tts-cli/releases/download/v0.2.0/gemini-tts-cli-0.2.0-win-x64.zip",
+            "hash": "PLACEHOLDER_WIN_X64_HASH",
+            "bin": "gemini-tts-cli.exe"
+        },
+        "amd64": {
+            "on_linux": {
+                "url": "https://github.com/doggy8088/gemini-tts-cli/releases/download/v0.2.0/gemini-tts-cli-0.2.0-linux-x64.tar.gz",
+                "hash": "PLACEHOLDER_LINUX_X64_HASH"
+            },
+            "on_darwin": {
+                "url": "https://github.com/doggy8088/gemini-tts-cli/releases/download/v0.2.0/gemini-tts-cli-0.2.0-osx-x64.tar.gz",
+                "hash": "PLACEHOLDER_OSX_X64_HASH"
+            },
+            "bin": "gemini-tts-cli"
+        },
+        "arm64": {
+            "on_linux": {
+                "url": "https://github.com/doggy8088/gemini-tts-cli/releases/download/v0.2.0/gemini-tts-cli-0.2.0-linux-arm64.tar.gz",
+                "hash": "PLACEHOLDER_LINUX_ARM64_HASH"
+            },
+            "on_darwin": {
+                "url": "https://github.com/doggy8088/gemini-tts-cli/releases/download/v0.2.0/gemini-tts-cli-0.2.0-osx-arm64.tar.gz",
+                "hash": "PLACEHOLDER_OSX_ARM64_HASH"
+            },
+            "bin": "gemini-tts-cli"
+        }
+    },
+    "checkver": {
+        "github": "https://github.com/doggy8088/gemini-tts-cli"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/doggy8088/gemini-tts-cli/releases/download/v$version/gemini-tts-cli-$version-win-x64.zip"
+            },
+            "amd64": {
+                "on_linux": {
+                    "url": "https://github.com/doggy8088/gemini-tts-cli/releases/download/v$version/gemini-tts-cli-$version-linux-x64.tar.gz"
+                },
+                "on_darwin": {
+                    "url": "https://github.com/doggy8088/gemini-tts-cli/releases/download/v$version/gemini-tts-cli-$version-osx-x64.tar.gz"
+                }
+            },
+            "arm64": {
+                "on_linux": {
+                    "url": "https://github.com/doggy8088/gemini-tts-cli/releases/download/v$version/gemini-tts-cli-$version-linux-arm64.tar.gz"
+                },
+                "on_darwin": {
+                    "url": "https://github.com/doggy8088/gemini-tts-cli/releases/download/v$version/gemini-tts-cli-$version-osx-arm64.tar.gz"
+                }
+            }
+        },
+        "hash": {
+            "url": "$url.sha256",
+            "regex": "$sha256"
+        }
+    }
+}
