@@ -63,29 +63,38 @@ root.AddCommand(listVoicesCommand);
 
 root.SetHandler(async (string instructions, string speaker1, string text, string output) =>
 {
-    if (instructions.Contains(":"))
+    try
     {
-        instructions = instructions.Replace(":", "");
-    }
+        if (instructions.Contains(":"))
+        {
+            instructions = instructions.Replace(":", "");
+        }
 
-    // Determine voice gender
-    var voiceGender = femaleVoices.Contains(speaker1, StringComparer.OrdinalIgnoreCase) ? "Female" : "Male";
+        // Determine voice gender
+        var voiceGender = femaleVoices.Contains(speaker1, StringComparer.OrdinalIgnoreCase) ? "Female" : "Male";
 
-    System.Console.WriteLine($"📜 Instructions: {instructions}");
-    System.Console.WriteLine($"🎤 Select voice: {speaker1} ({voiceGender})");
-    System.Console.WriteLine($"📝 The TTS Text: {text}");
+        System.Console.WriteLine($"📜 Instructions: {instructions}");
+        System.Console.WriteLine($"🎤 Select voice: {speaker1} ({voiceGender})");
+        System.Console.WriteLine($"📝 The TTS Text: {text}");
 
-    // Compose the instruction for Gemini TTS
-    string prompt = instructions + ": " + text;
+        // Compose the instruction for Gemini TTS
+        string prompt = instructions + ": " + text;
 
-    // ---------- Check environment variables ----------
-    var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-    if (string.IsNullOrWhiteSpace(apiKey))
-        throw new InvalidOperationException("Please set the API key in the GEMINI_API_KEY environment variable");
+        // ---------- Check environment variables ----------
+        var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            Console.WriteLine("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.");
+            Console.WriteLine("💡 You can get your API key from: https://makersuite.google.com/app/apikey");
+            Environment.Exit(1);
+        }
 
-    // ---------- Validate voice ----------
-    if (!allowedVoices.Contains(speaker1))
-        throw new ArgumentException($"Invalid Speaker1: {speaker1}");
+        // ---------- Validate voice ----------
+        if (!allowedVoices.Contains(speaker1))
+        {
+            Console.WriteLine($"❌ Error: Invalid voice '{speaker1}'. Use 'list-voices' command to see available voices.");
+            Environment.Exit(1);
+        }
 
     // ---------- Compose JSON ----------
     var payload = new
@@ -113,30 +122,11 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
     };
 
     using var http = new HttpClient { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") };
-    var req = new HttpRequestMessage(HttpMethod.Post,
-        $"v1beta/models/{ModelId}:{ApiPath}?key={apiKey}")
-    {
-        Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
-    };
-
-    // ---------- Dump req ----------
-    // Console.WriteLine("=== HTTP Request ===");
-    // Console.WriteLine($"{req.Method} {req.RequestUri}");
-    // foreach (var header in req.Headers)
-    //     Console.WriteLine($"{header.Key}: {string.Join(", ", header.Value)}");
-    // if (req.Content != null)
-    // {
-    //     foreach (var header in req.Content.Headers)
-    //         Console.WriteLine($"{header.Key}: {string.Join(", ", header.Value)}");
-    //     var content = await req.Content.ReadAsStringAsync();
-    //     Console.WriteLine(content);
-    // }
-    // Console.WriteLine("====================");
+    var payloadJson = JsonSerializer.Serialize(payload);
 
     // ---------- Call API ----------
     const int maxRetries = 3;
     int attempt = 0;
-    Exception? lastException = null;
     string? base64 = null;
     byte[]? pcmBytes = null;
 
@@ -145,6 +135,13 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
         string json = string.Empty;
         try
         {
+            // Create a new request for each attempt
+            var req = new HttpRequestMessage(HttpMethod.Post,
+                $"v1beta/models/{ModelId}:{ApiPath}?key={apiKey}")
+            {
+                Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
+            };
+
             using var res = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
             res.EnsureSuccessStatusCode();
 
@@ -160,7 +157,7 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
 
             if (finishReason.GetString() != "STOP")
             {
-                Console.WriteLine($"⚠️ Exception occurred, retry attempt {attempt}: Gemini refused to generate audio\n{json}");
+                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}: The service declined to generate audio for this request.");
                 attempt++;
                 await Task.Delay(1000);
                 continue; // 不是 STOP，重試
@@ -175,27 +172,43 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
                           .GetString();
 
             if (string.IsNullOrWhiteSpace(base64))
-                throw new InvalidOperationException("API returned empty audio data");
+            {
+                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}: Received empty audio data from the service.");
+                attempt++;
+                await Task.Delay(1000);
+                continue;
+            }
 
             pcmBytes = Convert.FromBase64String(base64);
             break; // 成功則跳出 retry 迴圈
         }
+        catch (HttpRequestException ex)
+        {
+            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}: Network error occurred. {ex.Message}");
+            attempt++;
+            if (attempt < maxRetries)
+                await Task.Delay(1000);
+        }
+        catch (JsonException)
+        {
+            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}: Received invalid response from the service.");
+            attempt++;
+            if (attempt < maxRetries)
+                await Task.Delay(1000);
+        }
         catch (Exception ex)
         {
-            lastException = ex;
-            if (attempt < maxRetries)
-            {
-                Console.WriteLine($"⚠️ Exception occurred, retry attempt {attempt+1}: {json}");
-                await Task.Delay(1000);
-            }
+            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}: {ex.Message}");
             attempt++;
+            if (attempt < maxRetries)
+                await Task.Delay(1000);
         }
     }
 
     if (pcmBytes == null)
     {
-        // throw new InvalidOperationException($"API failed more than {maxRetries} times", lastException);
-        Console.WriteLine($"⚠️ API failed more than {maxRetries} times");
+        Console.WriteLine($"❌ Error: Failed to generate audio after {maxRetries} attempts. Please try again later.");
+        Environment.Exit(1);
     }
     else
     {
@@ -205,6 +218,13 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
         WaveFileWriter.CreateWaveFile(output, raw);
 
         Console.WriteLine($"✅ Generated {output}");
+    }
+
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Error: An unexpected error occurred. {ex.Message}");
+        Environment.Exit(1);
     }
 
 }, instructionsOpt, speaker1Opt, textOpt, outputOpt);
