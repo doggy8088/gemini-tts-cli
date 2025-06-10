@@ -52,14 +52,14 @@ To make it permanent, add the export line to your shell profile (`.bashrc`, `.zs
 ## Usage
 
 ```bash
-gemini-tts --instructions "Your instructions" --speaker1 <voice-name> --text "Text to convert" [--outputfile output.wav]
+gemini-tts --text "Text to convert" [--instructions "Your instructions"] [--speaker1 <voice-name>] [--outputfile output.wav]
 ```
 
 ### Parameters
 
-- `--instructions` (required): Instructions for the TTS conversion
-- `--speaker1` (required): Voice name for the speaker
 - `--text` (required): Text to convert to speech
+- `--instructions` (optional): Instructions for the TTS conversion (default: "Read aloud in a warm, professional and friendly tone")
+- `--speaker1` (optional): Voice name for the speaker (default: random selection from available voices)
 - `--outputfile` (optional): Output WAV filename (default: output.wav)
 
 ### Available Voices
@@ -76,12 +76,19 @@ gemini-tts --instructions "Your instructions" --speaker1 <voice-name> --text "Te
 
 ### Examples
 
+With custom instructions and specific voice:
 ```bash
 gemini-tts --instructions "Read aloud in a warm, professional and friendly tone" --speaker1 achird --text "大家好，我是 Will 保哥。" --outputfile my-name-is-will.wav
 ```
 
+With minimal required parameters (uses defaults):
 ```bash
-gemini-tts --instructions "Please speak clearly and naturally" --speaker1 zephyr --text "Hello, this is a test of the Gemini TTS system" --outputfile greeting.wav
+gemini-tts --text "Hello, this is a test of the Gemini TTS system"
+```
+
+With specific voice but default instructions:
+```bash
+gemini-tts --speaker1 zephyr --text "Hello, this is a test of the Gemini TTS system" --outputfile greeting.wav
 ```
 
 ## Development
@@ -91,7 +98,7 @@ gemini-tts --instructions "Please speak clearly and naturally" --speaker1 zephyr
 1. Clone the repository
 2. Restore dependencies: `dotnet restore`
 3. Build: `dotnet build`
-4. Run: `dotnet run -- --instructions "test" --speaker1 zephyr --text "Hello world"`
+4. Run: `dotnet run -- --text "Hello world"`
 
 ### Publishing
 
