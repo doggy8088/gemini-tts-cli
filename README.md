@@ -52,7 +52,7 @@ To make it permanent, add the export line to your shell profile (`.bashrc`, `.zs
 ## Usage
 
 ```bash
-gemini-tts --text "Text to convert" [--instructions "Your instructions"] [--speaker1 <voice-name>] [--outputfile output.wav]
+gemini-tts -t "Text to convert" [-i "Your instructions"] [-s <voice-name>] [-o output.wav]
 ```
 
 ### Parameters
@@ -78,17 +78,17 @@ gemini-tts --text "Text to convert" [--instructions "Your instructions"] [--spea
 
 With custom instructions and specific voice:
 ```bash
-gemini-tts --instructions "Read aloud in a warm, professional and friendly tone" --speaker1 achird --text "大家好，我是 Will 保哥。" --outputfile my-name-is-will.wav
+gemini-tts -i "Read aloud in a warm, professional and friendly tone" -s achird -t "大家好，我是 Will 保哥。" -o my-name-is-will.wav
 ```
 
 With minimal required parameters (uses defaults):
 ```bash
-gemini-tts --text "Hello, this is a test of the Gemini TTS system"
+gemini-tts -t "Hello, this is a test of the Gemini TTS system"
 ```
 
 With specific voice but default instructions:
 ```bash
-gemini-tts --speaker1 zephyr --text "Hello, this is a test of the Gemini TTS system" --outputfile greeting.wav
+gemini-tts -s zephyr -t "Hello, this is a test of the Gemini TTS system" -o greeting.wav
 ```
 
 ## Development
