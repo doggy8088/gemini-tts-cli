@@ -57,10 +57,10 @@ gemini-tts -t "Text to convert" [-i "Your instructions"] [-s <voice-name>] [-o o
 
 ### Parameters
 
-- `--text` (required): Text to convert to speech
-- `--instructions` (optional): Instructions for the TTS conversion (default: "Read aloud in a warm, professional and friendly tone")
-- `--speaker1` (optional): Voice name for the speaker (default: random selection from available voices)
-- `--outputfile` (optional): Output WAV filename (default: output.wav)
+- `-t`, `--text` (required): Text to convert to speech
+- `-i`, `--instructions` (optional): Instructions for the TTS conversion (default: "Read aloud in a warm, professional and friendly tone")
+- `-s`, `--speaker1` (optional): Voice name for the speaker (default: random selection from available voices)
+- `-o`, `--outputfile` (optional): Output WAV filename (default: output.wav)
 
 ### Available Voices
 
