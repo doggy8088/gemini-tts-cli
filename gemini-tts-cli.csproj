@@ -12,7 +12,7 @@
 
     <!-- Package Metadata -->
     <PackageId>GeminiTtsCli</PackageId>
-    <Version>0.5.0</Version>
+    <Version>0.5.1</Version>
     <Authors>Will 保哥</Authors>
     <Description>A CLI tool for text-to-speech using Google Gemini TTS API</Description>
     <PackageTags>tts;text-to-speech;gemini;cli;audio</PackageTags>
