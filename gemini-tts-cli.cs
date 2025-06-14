@@ -61,6 +61,59 @@ listVoicesCommand.SetHandler(() =>
 });
 root.AddCommand(listVoicesCommand);
 
+// Add merge command
+var mergeCommand = new Command("merge", "Merge multiple WAV files into one WAV file");
+var patternArg = new Argument<string>("pattern", "Glob pattern for WAV files (e.g., '*.wav', 'trial03-*.wav', '**/*.wav')");
+var mergeOutputOpt = new Option<string?>("--outputfile", "Output WAV filename (optional)");
+mergeOutputOpt.AddAlias("-o");
+
+mergeCommand.AddArgument(patternArg);
+mergeCommand.AddOption(mergeOutputOpt);
+
+mergeCommand.SetHandler(async (string pattern, string? outputFile) =>
+{
+    try
+    {
+        // Validate pattern has .wav extension
+        if (!pattern.Contains(".wav"))
+        {
+            Console.WriteLine("❌ Error: Pattern must include '*.wav' file extension.");
+            Environment.Exit(1);
+        }
+
+        // Find WAV files matching the pattern
+        var wavFiles = FindWavFiles(pattern);
+        
+        if (wavFiles.Length == 0)
+        {
+            Console.WriteLine($"❌ Error: No WAV files found matching pattern '{pattern}'.");
+            Environment.Exit(1);
+        }
+
+        // Determine output filename
+        var finalOutputFile = outputFile ?? GetDefaultOutputFileName(pattern);
+        
+        Console.WriteLine($"🔍 Found {wavFiles.Length} WAV files to merge:");
+        foreach (var file in wavFiles)
+        {
+            Console.WriteLine($"  📄 {file}");
+        }
+        Console.WriteLine($"📁 Output file: {finalOutputFile}");
+
+        // Merge WAV files
+        MergeWavFiles(wavFiles, finalOutputFile);
+        
+        Console.WriteLine($"✅ Successfully merged {wavFiles.Length} files into {finalOutputFile}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Error: {ex.Message}");
+        Environment.Exit(1);
+    }
+}, patternArg, mergeOutputOpt);
+
+root.AddCommand(mergeCommand);
+
 root.SetHandler(async (string instructions, string speaker1, string text, string output) =>
 {
     try
@@ -233,5 +286,123 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
 return await root.InvokeAsync(args);
 
 // ---------- Helper functions ----------
+static string[] FindWavFiles(string pattern)
+{
+    var currentDir = Directory.GetCurrentDirectory();
+    
+    // Handle recursive patterns (**/*.wav)
+    if (pattern.StartsWith("**/"))
+    {
+        var searchPattern = pattern[3..]; // Remove "**/"
+        return Directory.GetFiles(currentDir, searchPattern, SearchOption.AllDirectories)
+                       .Where(f => f.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+                       .OrderBy(f => f)
+                       .ToArray();
+    }
+    
+    // Handle regular patterns (*.wav, trial03-*.wav)
+    return Directory.GetFiles(currentDir, pattern, SearchOption.TopDirectoryOnly)
+                   .Where(f => f.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+                   .OrderBy(f => f)
+                   .ToArray();
+}
+
+static string GetDefaultOutputFileName(string pattern)
+{
+    // Extract base name from pattern for default output
+    if (pattern.StartsWith("**/"))
+    {
+        return "all-merged.wav";
+    }
+    
+    if (pattern == "*.wav")
+    {
+        return "merged.wav";
+    }
+    
+    // For patterns like "trial03-*.wav", generate "trial03-merged.wav"
+    var baseName = Path.GetFileNameWithoutExtension(pattern).Replace("*", "").TrimEnd('-');
+    return string.IsNullOrEmpty(baseName) ? "merged.wav" : $"{baseName}-merged.wav";
+}
+
+static void MergeWavFiles(string[] inputFiles, string outputFile)
+{
+    var audioStreams = new List<WaveStream>();
+    
+    try
+    {
+        // Load all input files
+        foreach (var inputFile in inputFiles)
+        {
+            var reader = new WaveFileReader(inputFile);
+            audioStreams.Add(reader);
+        }
+        
+        // Check if all files have the same format
+        var firstFormat = audioStreams[0].WaveFormat;
+        bool allSameFormat = audioStreams.All(s => 
+            s.WaveFormat.SampleRate == firstFormat.SampleRate &&
+            s.WaveFormat.BitsPerSample == firstFormat.BitsPerSample &&
+            s.WaveFormat.Channels == firstFormat.Channels);
+        
+        if (!allSameFormat)
+        {
+            Console.WriteLine("⚠️ Warning: Input files have different formats. Using first file's format for output.");
+        }
+        
+        // Create concatenated wave provider
+        var concatenated = new ConcatenatingWaveProvider(audioStreams);
+        
+        // Write to output file
+        WaveFileWriter.CreateWaveFile(outputFile, concatenated);
+    }
+    finally
+    {
+        // Clean up streams
+        foreach (var stream in audioStreams)
+        {
+            stream?.Dispose();
+        }
+    }
+}
+
 static string Capitalize(string voice) =>
     char.ToUpper(voice[0], CultureInfo.InvariantCulture) + voice[1..].ToLowerInvariant();
+
+// Simple wave provider that concatenates multiple wave streams  
+public class ConcatenatingWaveProvider : IWaveProvider
+{
+    private readonly WaveStream[] sources;
+    private int currentSourceIndex = 0;
+    private readonly WaveFormat waveFormat;
+
+    public ConcatenatingWaveProvider(IEnumerable<WaveStream> sources)
+    {
+        this.sources = sources.ToArray();
+        if (this.sources.Length == 0)
+            throw new ArgumentException("Must provide at least one source");
+        
+        this.waveFormat = this.sources[0].WaveFormat;
+    }
+
+    public WaveFormat WaveFormat => waveFormat;
+
+    public int Read(byte[] buffer, int offset, int count)
+    {
+        int totalRead = 0;
+        
+        while (totalRead < count && currentSourceIndex < sources.Length)
+        {
+            int read = sources[currentSourceIndex].Read(buffer, offset + totalRead, count - totalRead);
+            totalRead += read;
+            
+            if (read == 0)
+            {
+                // Current source is exhausted, move to next
+                currentSourceIndex++;
+            }
+        }
+        
+        return totalRead;
+    }
+}
