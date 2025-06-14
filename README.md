@@ -9,6 +9,8 @@ A command-line interface tool for text-to-speech conversion using Google's Gemin
 - Support for custom instructions
 - Output to WAV format
 - Merge multiple WAV files into one with glob pattern support
+- Batch processing from text/markdown files
+- Concurrency support for batch TTS
 - Cross-platform support (Windows, Linux, macOS)
 
 ## Installation
@@ -52,30 +54,58 @@ To make it permanent, add the export line to your shell profile (`.bashrc`, `.zs
 
 ## Usage
 
+### Single Text to Speech
+
 ```bash
 gemini-tts -t "Text to convert" [-i "Your instructions"] [-s <voice-name>] [-o output.wav]
 ```
 
-### Parameters
+### Batch Processing from File
 
-- `-t`, `--text` (required): Text to convert to speech
+```bash
+gemini-tts -f "input.txt" [-i "Your instructions"] [-s <voice-name>] [-m] [-c 20] [-o output.wav]
+```
+
+### Merge WAV Files
+
+```bash
+gemini-tts merge <glob-pattern> [-o <output-file>]
+```
+
+### List Available Voices
+
+```bash
+gemini-tts list-voices
+```
+
+## Parameters
+
+- `-t`, `--text` (optional): Text to convert to speech (required if no `-f`)
+- `-f`, `--file` (optional): File path for batch processing (.txt or .md files, required if no `-t`)
 - `-i`, `--instructions` (optional): Instructions for the TTS conversion (default: "Read aloud in a warm, professional and friendly tone")
 - `-s`, `--speaker1` (optional): Voice name for the speaker (default: random selection from available voices)
 - `-o`, `--outputfile` (optional): Output WAV filename (default: output.wav)
+- `-c`, `--concurrency` (optional): Concurrent API requests for batch processing (default: 1)
+- `-m`, `--merge` (optional): Merge all outputs into single file for batch processing
 
-### Available Voices
+#### Merge Command Parameters
 
-#### Female Voices
+- `<glob-pattern>` (required): Pattern to match WAV files (e.g., `*.wav`, `trial03-*.wav`, `**/*.wav`)
+- `-o`, `--outputfile` (optional): Output WAV filename
+
+## Available Voices
+
+### Female Voices
 
 - achernar, aoede, autonoe, callirrhoe, despina, erinome, gacrux, kore
 - laomedeia, leda, sulafat, zephyr, pulcherrima, vindemiatrix
 
-#### Male Voices
+### Male Voices
 
 - achird, algenib, algieba, alnilam, charon, enceladus, fenrir, iapetus
 - orus, puck, rasalgethi, sadachbia, sadaltager, schedar, umbriel, zubenelgenubi
 
-### Examples
+## Examples
 
 With custom instructions and specific voice:
 ```bash
@@ -92,22 +122,21 @@ With specific voice but default instructions:
 gemini-tts -s zephyr -t "Hello, this is a test of the Gemini TTS system" -o greeting.wav
 ```
 
-## Merge Command
-
-The `merge` command allows you to merge multiple WAV files into a single WAV file.
-
-### Usage
-
+Batch processing from file, with merge and concurrency:
 ```bash
-gemini-tts merge <glob-pattern> [-o <output-file>]
+gemini-tts -f "test.txt" -s zephyr -m -c 5 -o batch-merged.wav
 ```
 
-### Parameters
+Batch processing from file, without merge (outputs numbered files):
+```bash
+gemini-tts -f "test.txt" -s zephyr -c 3
+# Output: test-01.wav, test-02.wav, ...
+```
 
-- `<glob-pattern>` (required): Pattern to match WAV files (e.g., `*.wav`, `trial03-*.wav`, `**/*.wav`)
-- `-o`, `--outputfile` (optional): Output WAV filename
-
-### Examples
+List all available voices:
+```bash
+gemini-tts list-voices
+```
 
 Merge all WAV files in current directory:
 ```bash
@@ -127,12 +156,15 @@ gemini-tts merge '**/*.wav' -o all-merged.wav
 # Creates: all-merged.wav
 ```
 
-### Notes
+## Notes
 
-- All input files must have `.wav` extension
+- All input files for batch must have `.txt` or `.md` extension
+- All input files for merge must have `.wav` extension
 - Files with different audio formats will be converted to match the first file's format
 - The pattern must include `*.wav` to ensure only WAV files are processed
 - Recursive patterns (`**/*.wav`) will search subdirectories
+- Either `--text` or `--file` must be provided, but not both
+- API key must be set in the `GEMINI_API_KEY` environment variable
 
 ## Development
 

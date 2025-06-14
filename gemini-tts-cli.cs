@@ -31,7 +31,7 @@ var instructionsOpt = new Option<string>("--instructions", () => "Read aloud in 
 instructionsOpt.AddAlias("-i");
 var speaker1Opt = new Option<string>("--speaker1", () => allowedVoices.OrderBy(x => Guid.NewGuid()).First(), $"Speaker 1 voice name (optional, random if not specified)\nAvailable voices: {voiceList}");
 speaker1Opt.AddAlias("-s");
-var textOpt = new Option<string>("--text", "Text to convert to speech (required) or \"@file.txt\" for batch processing") { IsRequired = false };
+var textOpt = new Option<string>("--text", "Text to convert to speech (required if no -f <file>)") { IsRequired = false };
 textOpt.AddAlias("-t");
 var fileOpt = new Option<string?>("--file", "File path for batch processing (.txt or .md files)");
 fileOpt.AddAlias("-f");
