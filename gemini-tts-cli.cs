@@ -417,7 +417,7 @@ static async Task ProcessBatchTts(string instructions, string speaker1, string[]
     {
         var index = i + 1;
         var text = textLines[i];
-        var outputFile = merge ? Path.GetTempFileName() + ".wav" : GenerateNumberedFilename(baseOutput, index);
+        var outputFile = merge ? Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".wav") : GenerateNumberedFilename(baseOutput, index);
         
         if (merge)
         {
