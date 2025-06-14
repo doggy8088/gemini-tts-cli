@@ -85,3 +85,15 @@ jobs:
           Write-Host "Help command timed out (expected behavior)"
         }
       shell: powershell
+
+    # Unit Tests
+    - name: Restore solution dependencies
+      run: dotnet restore GeminiTtsCli.sln
+
+    - name: Build solution
+      run: dotnet build GeminiTtsCli.sln --configuration Release --no-restore
+
+    - name: Run unit tests
+      run: dotnet test GeminiTtsCli.sln --configuration Release --no-build --verbosity normal
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

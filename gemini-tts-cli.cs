@@ -10,13 +10,6 @@ using System.Text.Json;
 
 using NAudio.Wave;
 
-// ---------- Parameters and constants ----------
-const string ModelId = "gemini-2.5-flash-preview-tts";
-const string ApiPath = "streamGenerateContent";
-const int SampleHz = 24_000; // 24 kHz
-const int Bits = 16;
-const int Channels = 1;
-
 // Voice categorization
 var femaleVoices = new[] { "achernar", "aoede", "autonoe", "callirrhoe", "despina", "erinome", "gacrux", "kore", "laomedeia", "leda", "sulafat", "zephyr", "pulcherrima", "vindemiatrix" };
 var maleVoices = new[] { "achird", "algenib", "algieba", "alnilam", "charon", "enceladus", "fenrir", "iapetus", "orus", "puck", "rasalgethi", "sadachbia", "sadaltager", "schedar", "umbriel", "zubenelgenubi" };
@@ -107,7 +100,7 @@ mergeCommand.SetHandler((string pattern, string? outputFile) =>
         }
 
         // Find WAV files matching the pattern
-        var wavFiles = FindWavFiles(pattern);
+        var wavFiles = GeminiTtsHelpers.FindWavFiles(pattern);
         
         if (wavFiles.Length == 0)
         {
@@ -116,7 +109,7 @@ mergeCommand.SetHandler((string pattern, string? outputFile) =>
         }
 
         // Determine output filename
-        var finalOutputFile = outputFile ?? GetDefaultOutputFileName(pattern);
+        var finalOutputFile = outputFile ?? GeminiTtsHelpers.GetDefaultOutputFileName(pattern);
         
         Console.WriteLine($"🔍 Found {wavFiles.Length} WAV files to merge:");
         foreach (var file in wavFiles)
@@ -126,7 +119,7 @@ mergeCommand.SetHandler((string pattern, string? outputFile) =>
         Console.WriteLine($"📁 Output file: {finalOutputFile}");
 
         // Merge WAV files
-        MergeWavFiles(wavFiles, finalOutputFile);
+        GeminiTtsHelpers.MergeWavFiles(wavFiles, finalOutputFile);
         
         Console.WriteLine($"✅ Successfully merged {wavFiles.Length} files into {finalOutputFile}");
     }
@@ -156,7 +149,7 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
         }
 
         // Check if this is a file reference first (before API key validation for better error messages)
-        if (!string.IsNullOrEmpty(file) || IsFileReference(text))
+        if (!string.IsNullOrEmpty(file) || GeminiTtsHelpers.IsFileReference(text))
         {
             var filePath = !string.IsNullOrEmpty(file) ? file : (text!.StartsWith("\"@") ? text.Substring(2).TrimEnd('"') : text!.Substring(1)); // Remove @ or "@" prefix and trailing quote
             
@@ -185,7 +178,7 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             
             try
             {
-                var textLines = ReadAndFilterFileLines(filePath);
+                var textLines = GeminiTtsHelpers.ReadAndFilterFileLines(filePath);
                 
                 if (textLines.Length == 0)
                 {
@@ -199,7 +192,7 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
                 Console.WriteLine($"⚡ Concurrency level: {concurrency}");
                 Console.WriteLine($"🔗 Merge mode: {(merge ? "Yes" : "No")}");
                 
-                await ProcessBatchTts(instructions, speaker1, textLines, output, concurrency, merge, apiKey);
+                await GeminiTtsHelpers.ProcessBatchTts(instructions, speaker1, textLines, output, concurrency, merge, apiKey);
             }
             catch (Exception ex)
             {
@@ -228,7 +221,7 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
 
             try
             {
-                await GenerateSingleTts(instructions, speaker1, text!, output, apiKey);
+                await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, text!, output, apiKey);
                 Console.WriteLine($"✅ Generated {output}");
             }
             catch (Exception ex)
@@ -250,21 +243,30 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
 // ---------- Execute ----------
 return await root.InvokeAsync(args);
 
-// ---------- Helper functions ----------
-static bool IsFileReference(string? text) => !string.IsNullOrEmpty(text) && (text.StartsWith("@") || text.StartsWith("\"@"));
-
-static string[] ReadAndFilterFileLines(string filePath)
+// ---------- Helper functions class ----------
+public static class GeminiTtsHelpers
 {
-    var lines = File.ReadAllLines(filePath);
-    
-    // Filter out empty lines and lines with only symbols/whitespace
-    return lines
-        .Where(line => !string.IsNullOrWhiteSpace(line))
-        .Where(line => line.Any(char.IsLetterOrDigit))
-        .ToArray();
-}
+    // ---------- Constants ----------
+    public const string ModelId = "gemini-2.5-flash-preview-tts";
+    public const string ApiPath = "streamGenerateContent";
+    public const int SampleHz = 24_000; // 24 kHz
+    public const int Bits = 16;
+    public const int Channels = 1;
 
-static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, int? lineNumber = null, string? textPreview = null)
+    public static bool IsFileReference(string? text) => !string.IsNullOrEmpty(text) && (text.StartsWith("@") || text.StartsWith("\"@"));
+
+    public static string[] ReadAndFilterFileLines(string filePath)
+    {
+        var lines = File.ReadAllLines(filePath);
+        
+        // Filter out empty lines and lines with only symbols/whitespace
+        return lines
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Where(line => line.Any(char.IsLetterOrDigit))
+            .ToArray();
+    }
+
+    public static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, int? lineNumber = null, string? textPreview = null)
 {
     // Compose the instruction for Gemini TTS
     string prompt = instructions + ": " + text;
@@ -394,13 +396,13 @@ static async Task<string> GenerateSingleTts(string instructions, string speaker1
     return output;
 }
 
-static string GenerateNumberedFilename(string baseOutput, int index)
-{
-    var directory = Path.GetDirectoryName(baseOutput) ?? "";
-    var nameWithoutExt = Path.GetFileNameWithoutExtension(baseOutput);
-    var extension = Path.GetExtension(baseOutput);
-    
-    // If no extension provided, default to .wav
+    public static string GenerateNumberedFilename(string baseOutput, int index)
+    {
+        var directory = Path.GetDirectoryName(baseOutput) ?? "";
+        var nameWithoutExt = Path.GetFileNameWithoutExtension(baseOutput);
+        var extension = Path.GetExtension(baseOutput);
+        
+        // If no extension provided, default to .wav
     if (string.IsNullOrEmpty(extension))
     {
         extension = ".wav";
@@ -410,192 +412,193 @@ static string GenerateNumberedFilename(string baseOutput, int index)
     return Path.Combine(directory, numberedName);
 }
 
-static async Task ProcessBatchTts(string instructions, string speaker1, string[] textLines, string baseOutput, int concurrency, bool merge, string apiKey)
-{
-    Console.WriteLine($"📚 Processing {textLines.Length} lines with concurrency level {concurrency}");
-    
-    var semaphore = new SemaphoreSlim(concurrency, concurrency);
-    var tasks = new List<Task<string>>();
-    var tempFiles = new List<string>();
-
-    for (int i = 0; i < textLines.Length; i++)
+    public static async Task ProcessBatchTts(string instructions, string speaker1, string[] textLines, string baseOutput, int concurrency, bool merge, string apiKey)
     {
-        var index = i + 1;
-        var text = textLines[i];
-        var outputFile = merge ? Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".wav") : GenerateNumberedFilename(baseOutput, index);
+        Console.WriteLine($"📚 Processing {textLines.Length} lines with concurrency level {concurrency}");
+        
+        var semaphore = new SemaphoreSlim(concurrency, concurrency);
+        var tasks = new List<Task<string>>();
+        var tempFiles = new List<string>();
+    
+        for (int i = 0; i < textLines.Length; i++)
+        {
+            var index = i + 1;
+            var text = textLines[i];
+            var outputFile = merge ? Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".wav") : GenerateNumberedFilename(baseOutput, index);
+            
+            if (merge)
+            {
+                tempFiles.Add(outputFile);
+            }
+    
+            var task = Task.Run(async () =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    Console.WriteLine($"🎵 Processing line {index}: {text.Substring(0, Math.Min(50, text.Length))}...");
+                    var textPreview = text.Substring(0, Math.Min(30, text.Length)) + (text.Length > 30 ? "..." : "");
+                    return await GenerateSingleTts(instructions, speaker1, text, outputFile, apiKey, index, textPreview);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+            
+            tasks.Add(task);
+        }
+    
+        var completedFiles = await Task.WhenAll(tasks);
         
         if (merge)
         {
-            tempFiles.Add(outputFile);
+            Console.WriteLine($"🔗 Merging {completedFiles.Length} files into {baseOutput}");
+            MergeWavFiles(completedFiles.ToArray(), baseOutput);
+            
+            // Clean up temporary files
+            foreach (var tempFile in tempFiles)
+            {
+                try
+                {
+                    File.Delete(tempFile);
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
+            
+            Console.WriteLine($"✅ Generated merged file: {baseOutput}");
         }
-
-        var task = Task.Run(async () =>
+        else
         {
-            await semaphore.WaitAsync();
-            try
+            Console.WriteLine($"✅ Generated {completedFiles.Length} numbered files");
+            foreach (var file in completedFiles)
             {
-                Console.WriteLine($"🎵 Processing line {index}: {text.Substring(0, Math.Min(50, text.Length))}...");
-                var textPreview = text.Substring(0, Math.Min(30, text.Length)) + (text.Length > 30 ? "..." : "");
-                return await GenerateSingleTts(instructions, speaker1, text, outputFile, apiKey, index, textPreview);
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        });
-        
-        tasks.Add(task);
-    }
-
-    var completedFiles = await Task.WhenAll(tasks);
-    
-    if (merge)
-    {
-        Console.WriteLine($"🔗 Merging {completedFiles.Length} files into {baseOutput}");
-        MergeWavFiles(completedFiles.ToArray(), baseOutput);
-        
-        // Clean up temporary files
-        foreach (var tempFile in tempFiles)
-        {
-            try
-            {
-                File.Delete(tempFile);
-            }
-            catch
-            {
-                // Ignore cleanup errors
+                Console.WriteLine($"  📄 {file}");
             }
         }
-        
-        Console.WriteLine($"✅ Generated merged file: {baseOutput}");
-    }
-    else
-    {
-        Console.WriteLine($"✅ Generated {completedFiles.Length} numbered files");
-        foreach (var file in completedFiles)
-        {
-            Console.WriteLine($"  📄 {file}");
-        }
-    }
 }
 
-static string[] FindWavFiles(string pattern)
-{
-    var currentDir = Directory.GetCurrentDirectory();
-    
-    // Handle recursive patterns (**/*.wav)
-    if (pattern.StartsWith("**/"))
+    public static string[] FindWavFiles(string pattern)
     {
-        var searchPattern = pattern[3..]; // Remove "**/"
-        return Directory.GetFiles(currentDir, searchPattern, SearchOption.AllDirectories)
+        var currentDir = Directory.GetCurrentDirectory();
+        
+        // Handle recursive patterns (**/*.wav)
+        if (pattern.StartsWith("**/"))
+        {
+            var searchPattern = pattern[3..]; // Remove "**/"
+            return Directory.GetFiles(currentDir, searchPattern, SearchOption.AllDirectories)
+                           .Where(f => f.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+                           .OrderBy(f => f)
+                           .ToArray();
+        }
+        
+        // Handle regular patterns (*.wav, trial03-*.wav)
+        return Directory.GetFiles(currentDir, pattern, SearchOption.TopDirectoryOnly)
                        .Where(f => f.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
                        .OrderBy(f => f)
                        .ToArray();
-    }
-    
-    // Handle regular patterns (*.wav, trial03-*.wav)
-    return Directory.GetFiles(currentDir, pattern, SearchOption.TopDirectoryOnly)
-                   .Where(f => f.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
-                   .OrderBy(f => f)
-                   .ToArray();
 }
 
-static string GetDefaultOutputFileName(string pattern)
-{
-    // Extract base name from pattern for default output
-    if (pattern.StartsWith("**/"))
+    public static string GetDefaultOutputFileName(string pattern)
     {
-        return "all-merged.wav";
-    }
-    
-    if (pattern == "*.wav")
-    {
-        return "merged.wav";
-    }
-    
-    // For patterns like "trial03-*.wav", generate "trial03-merged.wav"
-    var baseName = Path.GetFileNameWithoutExtension(pattern).Replace("*", "").TrimEnd('-');
-    return string.IsNullOrEmpty(baseName) ? "merged.wav" : $"{baseName}-merged.wav";
+        // Extract base name from pattern for default output
+        if (pattern.StartsWith("**/"))
+        {
+            return "all-merged.wav";
+        }
+        
+        if (pattern == "*.wav")
+        {
+            return "merged.wav";
+        }
+        
+        // For patterns like "trial03-*.wav", generate "trial03-merged.wav"
+        var baseName = Path.GetFileNameWithoutExtension(pattern).Replace("*", "").TrimEnd('-');
+        return string.IsNullOrEmpty(baseName) ? "merged.wav" : $"{baseName}-merged.wav";
 }
 
-static void MergeWavFiles(string[] inputFiles, string outputFile)
-{
-    var audioStreams = new List<WaveStream>();
-    
-    try
+    public static void MergeWavFiles(string[] inputFiles, string outputFile)
     {
-        // Load all input files
-        foreach (var inputFile in inputFiles)
+        var audioStreams = new List<WaveStream>();
+        
+        try
         {
-            var reader = new WaveFileReader(inputFile);
-            audioStreams.Add(reader);
+            // Load all input files
+            foreach (var inputFile in inputFiles)
+            {
+                var reader = new WaveFileReader(inputFile);
+                audioStreams.Add(reader);
+            }
+            
+            // Check if all files have the same format
+            var firstFormat = audioStreams[0].WaveFormat;
+            bool allSameFormat = audioStreams.All(s => 
+                s.WaveFormat.SampleRate == firstFormat.SampleRate &&
+                s.WaveFormat.BitsPerSample == firstFormat.BitsPerSample &&
+                s.WaveFormat.Channels == firstFormat.Channels);
+            
+            if (!allSameFormat)
+            {
+                Console.WriteLine("⚠️ Warning: Input files have different formats. Using first file's format for output.");
+            }
+            
+            // Create concatenated wave provider
+            var concatenated = new ConcatenatingWaveProvider(audioStreams);
+            
+            // Write to output file
+            WaveFileWriter.CreateWaveFile(outputFile, concatenated);
         }
-        
-        // Check if all files have the same format
-        var firstFormat = audioStreams[0].WaveFormat;
-        bool allSameFormat = audioStreams.All(s => 
-            s.WaveFormat.SampleRate == firstFormat.SampleRate &&
-            s.WaveFormat.BitsPerSample == firstFormat.BitsPerSample &&
-            s.WaveFormat.Channels == firstFormat.Channels);
-        
-        if (!allSameFormat)
+        finally
         {
-            Console.WriteLine("⚠️ Warning: Input files have different formats. Using first file's format for output.");
+            // Clean up streams
+            foreach (var stream in audioStreams)
+            {
+                stream?.Dispose();
+            }
         }
-        
-        // Create concatenated wave provider
-        var concatenated = new ConcatenatingWaveProvider(audioStreams);
-        
-        // Write to output file
-        WaveFileWriter.CreateWaveFile(outputFile, concatenated);
-    }
-    finally
-    {
-        // Clean up streams
-        foreach (var stream in audioStreams)
-        {
-            stream?.Dispose();
-        }
-    }
 }
 
-static string Capitalize(string voice) =>
-    char.ToUpper(voice[0], CultureInfo.InvariantCulture) + voice[1..].ToLowerInvariant();
+    public static string Capitalize(string voice) =>
+        char.ToUpper(voice[0], CultureInfo.InvariantCulture) + voice[1..].ToLowerInvariant();
+}
 
 // Simple wave provider that concatenates multiple wave streams  
 public class ConcatenatingWaveProvider : IWaveProvider
-{
-    private readonly WaveStream[] sources;
-    private int currentSourceIndex = 0;
-    private readonly WaveFormat waveFormat;
-
-    public ConcatenatingWaveProvider(IEnumerable<WaveStream> sources)
     {
-        this.sources = sources.ToArray();
-        if (this.sources.Length == 0)
-            throw new ArgumentException("Must provide at least one source");
-        
-        this.waveFormat = this.sources[0].WaveFormat;
-    }
-
-    public WaveFormat WaveFormat => waveFormat;
-
-    public int Read(byte[] buffer, int offset, int count)
-    {
-        int totalRead = 0;
-        
-        while (totalRead < count && currentSourceIndex < sources.Length)
+        private readonly WaveStream[] sources;
+        private int currentSourceIndex = 0;
+        private readonly WaveFormat waveFormat;
+    
+        public ConcatenatingWaveProvider(IEnumerable<WaveStream> sources)
         {
-            int read = sources[currentSourceIndex].Read(buffer, offset + totalRead, count - totalRead);
-            totalRead += read;
+            this.sources = sources.ToArray();
+            if (this.sources.Length == 0)
+                throw new ArgumentException("Must provide at least one source");
             
-            if (read == 0)
-            {
-                // Current source is exhausted, move to next
-                currentSourceIndex++;
-            }
+            this.waveFormat = this.sources[0].WaveFormat;
         }
-        
-        return totalRead;
+    
+        public WaveFormat WaveFormat => waveFormat;
+    
+        public int Read(byte[] buffer, int offset, int count)
+        {
+            int totalRead = 0;
+            
+            while (totalRead < count && currentSourceIndex < sources.Length)
+            {
+                int read = sources[currentSourceIndex].Read(buffer, offset + totalRead, count - totalRead);
+                totalRead += read;
+                
+                if (read == 0)
+                {
+                    // Current source is exhausted, move to next
+                    currentSourceIndex++;
+                }
+            }
+            
+            return totalRead;
+        }
     }
-}
