@@ -264,7 +264,7 @@ static string[] ReadAndFilterFileLines(string filePath)
         .ToArray();
 }
 
-static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey)
+static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, int? lineNumber = null, string? textPreview = null)
 {
     // Compose the instruction for Gemini TTS
     string prompt = instructions + ": " + text;
@@ -328,7 +328,8 @@ static async Task<string> GenerateSingleTts(string instructions, string speaker1
 
             if (finishReason.GetString() != "STOP")
             {
-                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}: The service declined to generate audio for this request.");
+                var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
+                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: The service declined to generate audio for this request.");
                 attempt++;
                 await Task.Delay(1000);
                 continue;
@@ -344,7 +345,8 @@ static async Task<string> GenerateSingleTts(string instructions, string speaker1
 
             if (string.IsNullOrWhiteSpace(base64))
             {
-                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}: Received empty audio data from the service.");
+                var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
+                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received empty audio data from the service.");
                 attempt++;
                 await Task.Delay(1000);
                 continue;
@@ -355,21 +357,24 @@ static async Task<string> GenerateSingleTts(string instructions, string speaker1
         }
         catch (HttpRequestException ex)
         {
-            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}: Network error occurred. {ex.Message}");
+            var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
+            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Network error occurred. {ex.Message}");
             attempt++;
             if (attempt < maxRetries)
                 await Task.Delay(1000);
         }
         catch (JsonException)
         {
-            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}: Received invalid response from the service.");
+            var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
+            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received invalid response from the service.");
             attempt++;
             if (attempt < maxRetries)
                 await Task.Delay(1000);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}: {ex.Message}");
+            var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
+            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: {ex.Message}");
             attempt++;
             if (attempt < maxRetries)
                 await Task.Delay(1000);
@@ -430,7 +435,8 @@ static async Task ProcessBatchTts(string instructions, string speaker1, string[]
             try
             {
                 Console.WriteLine($"🎵 Processing line {index}: {text.Substring(0, Math.Min(50, text.Length))}...");
-                return await GenerateSingleTts(instructions, speaker1, text, outputFile, apiKey);
+                var textPreview = text.Substring(0, Math.Min(30, text.Length)) + (text.Length > 30 ? "..." : "");
+                return await GenerateSingleTts(instructions, speaker1, text, outputFile, apiKey, index, textPreview);
             }
             finally
             {
