@@ -8,6 +8,7 @@ A command-line interface tool for text-to-speech conversion using Google's Gemin
 - Multiple voice options (male and female voices)
 - Support for custom instructions
 - Output to WAV format
+- Merge multiple WAV files into one with glob pattern support
 - Cross-platform support (Windows, Linux, macOS)
 
 ## Installation
@@ -90,6 +91,48 @@ With specific voice but default instructions:
 ```bash
 gemini-tts -s zephyr -t "Hello, this is a test of the Gemini TTS system" -o greeting.wav
 ```
+
+## Merge Command
+
+The `merge` command allows you to merge multiple WAV files into a single WAV file.
+
+### Usage
+
+```bash
+gemini-tts merge <glob-pattern> [-o <output-file>]
+```
+
+### Parameters
+
+- `<glob-pattern>` (required): Pattern to match WAV files (e.g., `*.wav`, `trial03-*.wav`, `**/*.wav`)
+- `-o`, `--outputfile` (optional): Output WAV filename
+
+### Examples
+
+Merge all WAV files in current directory:
+```bash
+gemini-tts merge '*.wav'
+# Creates: merged.wav
+```
+
+Merge specific pattern with custom output:
+```bash
+gemini-tts merge 'trial03-*.wav' -o trial03-merged.wav
+# Creates: trial03-merged.wav
+```
+
+Merge all WAV files recursively:
+```bash
+gemini-tts merge '**/*.wav' -o all-merged.wav
+# Creates: all-merged.wav
+```
+
+### Notes
+
+- All input files must have `.wav` extension
+- Files with different audio formats will be converted to match the first file's format
+- The pattern must include `*.wav` to ensure only WAV files are processed
+- Recursive patterns (`**/*.wav`) will search subdirectories
 
 ## Development
 
