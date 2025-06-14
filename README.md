@@ -222,8 +222,8 @@ The project includes automated GitHub Actions workflows for:
 To trigger a release, create and push a git tag:
 
 ```bash
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 ## License
