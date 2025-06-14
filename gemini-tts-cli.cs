@@ -31,8 +31,10 @@ var instructionsOpt = new Option<string>("--instructions", () => "Read aloud in 
 instructionsOpt.AddAlias("-i");
 var speaker1Opt = new Option<string>("--speaker1", () => allowedVoices.OrderBy(x => Guid.NewGuid()).First(), $"Speaker 1 voice name (optional, random if not specified)\nAvailable voices: {voiceList}");
 speaker1Opt.AddAlias("-s");
-var textOpt = new Option<string>("--text", "Text to convert to speech (required) or @file.txt for batch processing") { IsRequired = true };
+var textOpt = new Option<string>("--text", "Text to convert to speech (required) or \"@file.txt\" for batch processing") { IsRequired = false };
 textOpt.AddAlias("-t");
+var fileOpt = new Option<string?>("--file", "File path for batch processing (.txt or .md files)");
+fileOpt.AddAlias("-f");
 var outputOpt = new Option<string>("--outputfile", () => "output.wav", "Output WAV filename (default: output.wav)");
 outputOpt.AddAlias("-o");
 var concurrencyOpt = new Option<int>("--concurrency", () => 1, "Concurrent API requests for batch processing (default: 1)");
@@ -44,12 +46,26 @@ var root = new RootCommand("Gemini TTS CLI - Convert text to speech using Google
 root.AddOption(instructionsOpt);
 root.AddOption(speaker1Opt);
 root.AddOption(textOpt);
+root.AddOption(fileOpt);
 root.AddOption(outputOpt);
 root.AddOption(concurrencyOpt);
 root.AddOption(mergeOpt);
 
-// Disable response file support to allow @file.txt syntax
-root.TreatUnmatchedTokensAsErrors = true;
+// Add validation to ensure either text or file is provided
+root.AddValidator(result =>
+{
+    var text = result.GetValueForOption(textOpt);
+    var file = result.GetValueForOption(fileOpt);
+    
+    if (string.IsNullOrEmpty(text) && string.IsNullOrEmpty(file))
+    {
+        result.ErrorMessage = "Either --text or --file option must be provided.";
+    }
+    else if (!string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(file))
+    {
+        result.ErrorMessage = "Cannot specify both --text and --file options. Use one or the other.";
+    }
+});
 
 // Add list-voices command
 var listVoicesCommand = new Command("list-voices", "List all available voices");
@@ -79,7 +95,7 @@ mergeOutputOpt.AddAlias("-o");
 mergeCommand.AddArgument(patternArg);
 mergeCommand.AddOption(mergeOutputOpt);
 
-mergeCommand.SetHandler(async (string pattern, string? outputFile) =>
+mergeCommand.SetHandler((string pattern, string? outputFile) =>
 {
     try
     {
@@ -123,7 +139,7 @@ mergeCommand.SetHandler(async (string pattern, string? outputFile) =>
 
 root.AddCommand(mergeCommand);
 
-root.SetHandler(async (string instructions, string speaker1, string text, string output, int concurrency, bool merge) =>
+root.SetHandler(async (string instructions, string speaker1, string? text, string? file, string output, int concurrency, bool merge) =>
 {
     try
     {
@@ -133,9 +149,9 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
         }
 
         // Check if this is a file reference first (before API key validation for better error messages)
-        if (IsFileReference(text))
+        if (!string.IsNullOrEmpty(file) || IsFileReference(text))
         {
-            var filePath = text.StartsWith("\"@") ? text.Substring(2).TrimEnd('"') : text.Substring(1); // Remove @ or "@" prefix and trailing quote
+            var filePath = !string.IsNullOrEmpty(file) ? file : (text!.StartsWith("\"@") ? text.Substring(2).TrimEnd('"') : text!.Substring(1)); // Remove @ or "@" prefix and trailing quote
             
             // Validate file extension first
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
@@ -219,7 +235,7 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
 
             try
             {
-                await GenerateSingleTts(instructions, speaker1, text, output, apiKey);
+                await GenerateSingleTts(instructions, speaker1, text!, output, apiKey);
                 Console.WriteLine($"✅ Generated {output}");
             }
             catch (Exception ex)
@@ -236,13 +252,13 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
         Environment.Exit(1);
     }
 
-}, instructionsOpt, speaker1Opt, textOpt, outputOpt, concurrencyOpt, mergeOpt);
+}, instructionsOpt, speaker1Opt, textOpt, fileOpt, outputOpt, concurrencyOpt, mergeOpt);
 
 // ---------- Execute ----------
 return await root.InvokeAsync(args);
 
 // ---------- Helper functions ----------
-static bool IsFileReference(string text) => text.StartsWith("@") || text.StartsWith("\"@");
+static bool IsFileReference(string? text) => !string.IsNullOrEmpty(text) && (text.StartsWith("@") || text.StartsWith("\"@"));
 
 static string[] ReadAndFilterFileLines(string filePath)
 {
