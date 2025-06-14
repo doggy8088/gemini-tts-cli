@@ -31,16 +31,41 @@ var instructionsOpt = new Option<string>("--instructions", () => "Read aloud in 
 instructionsOpt.AddAlias("-i");
 var speaker1Opt = new Option<string>("--speaker1", () => allowedVoices.OrderBy(x => Guid.NewGuid()).First(), $"Speaker 1 voice name (optional, random if not specified)\nAvailable voices: {voiceList}");
 speaker1Opt.AddAlias("-s");
-var textOpt = new Option<string>("--text", "Text to convert to speech (required)") { IsRequired = true };
+var textOpt = new Option<string>("--text", "Text to convert to speech (required if no -f <file>)") { IsRequired = false };
 textOpt.AddAlias("-t");
+var fileOpt = new Option<string?>("--file", "File path for batch processing (.txt or .md files)");
+fileOpt.AddAlias("-f");
 var outputOpt = new Option<string>("--outputfile", () => "output.wav", "Output WAV filename (default: output.wav)");
 outputOpt.AddAlias("-o");
+var concurrencyOpt = new Option<int>("--concurrency", () => 1, "Concurrent API requests for batch processing (default: 1)");
+concurrencyOpt.AddAlias("-c");
+var mergeOpt = new Option<bool>("--merge", () => false, "Merge all outputs into single file for batch processing");
+mergeOpt.AddAlias("-m");
 
 var root = new RootCommand("Gemini TTS CLI - Convert text to speech using Google Gemini API");
 root.AddOption(instructionsOpt);
 root.AddOption(speaker1Opt);
 root.AddOption(textOpt);
+root.AddOption(fileOpt);
 root.AddOption(outputOpt);
+root.AddOption(concurrencyOpt);
+root.AddOption(mergeOpt);
+
+// Add validation to ensure either text or file is provided
+root.AddValidator(result =>
+{
+    var text = result.GetValueForOption(textOpt);
+    var file = result.GetValueForOption(fileOpt);
+    
+    if (string.IsNullOrEmpty(text) && string.IsNullOrEmpty(file))
+    {
+        result.ErrorMessage = "Either --text or --file option must be provided.";
+    }
+    else if (!string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(file))
+    {
+        result.ErrorMessage = "Cannot specify both --text and --file options. Use one or the other.";
+    }
+});
 
 // Add list-voices command
 var listVoicesCommand = new Command("list-voices", "List all available voices");
@@ -70,7 +95,7 @@ mergeOutputOpt.AddAlias("-o");
 mergeCommand.AddArgument(patternArg);
 mergeCommand.AddOption(mergeOutputOpt);
 
-mergeCommand.SetHandler(async (string pattern, string? outputFile) =>
+mergeCommand.SetHandler((string pattern, string? outputFile) =>
 {
     try
     {
@@ -114,7 +139,7 @@ mergeCommand.SetHandler(async (string pattern, string? outputFile) =>
 
 root.AddCommand(mergeCommand);
 
-root.SetHandler(async (string instructions, string speaker1, string text, string output) =>
+root.SetHandler(async (string instructions, string speaker1, string? text, string? file, string output, int concurrency, bool merge) =>
 {
     try
     {
@@ -123,31 +148,126 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
             instructions = instructions.Replace(":", "");
         }
 
-        // Determine voice gender
-        var voiceGender = femaleVoices.Contains(speaker1, StringComparer.OrdinalIgnoreCase) ? "Female" : "Male";
-
-        System.Console.WriteLine($"📜 Instructions: {instructions}");
-        System.Console.WriteLine($"🎤 Select voice: {speaker1} ({voiceGender})");
-        System.Console.WriteLine($"📝 The TTS Text: {text}");
-
-        // Compose the instruction for Gemini TTS
-        string prompt = instructions + ": " + text;
-
-        // ---------- Check environment variables ----------
-        var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            Console.WriteLine("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.");
-            Console.WriteLine("💡 You can get your API key from: https://makersuite.google.com/app/apikey");
-            Environment.Exit(1);
-        }
-
-        // ---------- Validate voice ----------
+        // ---------- Validate voice early for both single and batch processing ----------
         if (!allowedVoices.Contains(speaker1))
         {
             Console.WriteLine($"❌ Error: Invalid voice '{speaker1}'. Use 'list-voices' command to see available voices.");
             Environment.Exit(1);
         }
+
+        // Check if this is a file reference first (before API key validation for better error messages)
+        if (!string.IsNullOrEmpty(file) || IsFileReference(text))
+        {
+            var filePath = !string.IsNullOrEmpty(file) ? file : (text!.StartsWith("\"@") ? text.Substring(2).TrimEnd('"') : text!.Substring(1)); // Remove @ or "@" prefix and trailing quote
+            
+            // Validate file extension first
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            if (extension != ".txt" && extension != ".md")
+            {
+                Console.WriteLine($"❌ Error: File must have .txt or .md extension. Found: {extension}");
+                Environment.Exit(1);
+            }
+
+            if (!File.Exists(filePath))
+            {
+                Console.WriteLine($"❌ Error: File not found: {filePath}");
+                Environment.Exit(1);
+            }
+
+            // ---------- Check environment variables ----------
+            var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                Console.WriteLine("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.");
+                Console.WriteLine("💡 You can get your API key from: https://makersuite.google.com/app/apikey");
+                Environment.Exit(1);
+            }
+            
+            try
+            {
+                var textLines = ReadAndFilterFileLines(filePath);
+                
+                if (textLines.Length == 0)
+                {
+                    Console.WriteLine($"❌ Error: No valid text lines found in file '{filePath}'.");
+                    Environment.Exit(1);
+                }
+
+                Console.WriteLine($"📁 Processing file: {filePath}");
+                Console.WriteLine($"📝 Found {textLines.Length} valid text lines");
+                Console.WriteLine($"🎤 Using voice: {speaker1}");
+                Console.WriteLine($"⚡ Concurrency level: {concurrency}");
+                Console.WriteLine($"🔗 Merge mode: {(merge ? "Yes" : "No")}");
+                
+                await ProcessBatchTts(instructions, speaker1, textLines, output, concurrency, merge, apiKey);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error processing file: {ex.Message}");
+                Environment.Exit(1);
+            }
+        }
+        else
+        {
+            // ---------- Check environment variables ----------
+            var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                Console.WriteLine("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.");
+                Console.WriteLine("💡 You can get your API key from: https://makersuite.google.com/app/apikey");
+                Environment.Exit(1);
+            }
+
+            // Single text processing (existing logic)
+            // Determine voice gender
+            var voiceGender = femaleVoices.Contains(speaker1, StringComparer.OrdinalIgnoreCase) ? "Female" : "Male";
+
+            System.Console.WriteLine($"📜 Instructions: {instructions}");
+            System.Console.WriteLine($"🎤 Select voice: {speaker1} ({voiceGender})");
+            System.Console.WriteLine($"📝 The TTS Text: {text}");
+
+            try
+            {
+                await GenerateSingleTts(instructions, speaker1, text!, output, apiKey);
+                Console.WriteLine($"✅ Generated {output}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error: Failed to generate audio. {ex.Message}");
+                Environment.Exit(1);
+            }
+        }
+
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Error: An unexpected error occurred. {ex.Message}");
+        Environment.Exit(1);
+    }
+
+}, instructionsOpt, speaker1Opt, textOpt, fileOpt, outputOpt, concurrencyOpt, mergeOpt);
+
+// ---------- Execute ----------
+return await root.InvokeAsync(args);
+
+// ---------- Helper functions ----------
+static bool IsFileReference(string? text) => !string.IsNullOrEmpty(text) && (text.StartsWith("@") || text.StartsWith("\"@"));
+
+static string[] ReadAndFilterFileLines(string filePath)
+{
+    var lines = File.ReadAllLines(filePath);
+    
+    // Filter out empty lines and lines with only symbols/whitespace
+    return lines
+        .Where(line => !string.IsNullOrWhiteSpace(line))
+        .Where(line => line.Any(char.IsLetterOrDigit))
+        .ToArray();
+}
+
+static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey)
+{
+    // Compose the instruction for Gemini TTS
+    string prompt = instructions + ": " + text;
 
     // ---------- Compose JSON ----------
     var payload = new
@@ -200,8 +320,6 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
 
             json = await res.Content.ReadAsStringAsync();
 
-            // Console.WriteLine($"🎃 JSON: {json}");
-
             using var doc = JsonDocument.Parse(json);
 
             var finishReason = doc.RootElement[0]
@@ -213,7 +331,7 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
                 Console.WriteLine($"⚠️ Retry attempt {attempt + 1}: The service declined to generate audio for this request.");
                 attempt++;
                 await Task.Delay(1000);
-                continue; // 不是 STOP，重試
+                continue;
             }
 
             base64 = doc.RootElement[0]
@@ -233,7 +351,7 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
             }
 
             pcmBytes = Convert.FromBase64String(base64);
-            break; // 成功則跳出 retry 迴圈
+            break;
         }
         catch (HttpRequestException ex)
         {
@@ -260,32 +378,101 @@ root.SetHandler(async (string instructions, string speaker1, string text, string
 
     if (pcmBytes == null)
     {
-        Console.WriteLine($"❌ Error: Failed to generate audio after {maxRetries} attempts. Please try again later.");
-        Environment.Exit(1);
+        throw new Exception($"Failed to generate audio after {maxRetries} attempts");
+    }
+
+    // ---------- Convert RAW to WAV ----------
+    using var ms = new MemoryStream(pcmBytes);
+    using var raw = new RawSourceWaveStream(ms, new WaveFormat(SampleHz, Bits, Channels));
+    WaveFileWriter.CreateWaveFile(output, raw);
+
+    return output;
+}
+
+static string GenerateNumberedFilename(string baseOutput, int index)
+{
+    var directory = Path.GetDirectoryName(baseOutput) ?? "";
+    var nameWithoutExt = Path.GetFileNameWithoutExtension(baseOutput);
+    var extension = Path.GetExtension(baseOutput);
+    
+    // If no extension provided, default to .wav
+    if (string.IsNullOrEmpty(extension))
+    {
+        extension = ".wav";
+    }
+    
+    var numberedName = $"{nameWithoutExt}-{index:D2}{extension}";
+    return Path.Combine(directory, numberedName);
+}
+
+static async Task ProcessBatchTts(string instructions, string speaker1, string[] textLines, string baseOutput, int concurrency, bool merge, string apiKey)
+{
+    Console.WriteLine($"📚 Processing {textLines.Length} lines with concurrency level {concurrency}");
+    
+    var semaphore = new SemaphoreSlim(concurrency, concurrency);
+    var tasks = new List<Task<string>>();
+    var tempFiles = new List<string>();
+
+    for (int i = 0; i < textLines.Length; i++)
+    {
+        var index = i + 1;
+        var text = textLines[i];
+        var outputFile = merge ? Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".wav") : GenerateNumberedFilename(baseOutput, index);
+        
+        if (merge)
+        {
+            tempFiles.Add(outputFile);
+        }
+
+        var task = Task.Run(async () =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                Console.WriteLine($"🎵 Processing line {index}: {text.Substring(0, Math.Min(50, text.Length))}...");
+                return await GenerateSingleTts(instructions, speaker1, text, outputFile, apiKey);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+        
+        tasks.Add(task);
+    }
+
+    var completedFiles = await Task.WhenAll(tasks);
+    
+    if (merge)
+    {
+        Console.WriteLine($"🔗 Merging {completedFiles.Length} files into {baseOutput}");
+        MergeWavFiles(completedFiles.ToArray(), baseOutput);
+        
+        // Clean up temporary files
+        foreach (var tempFile in tempFiles)
+        {
+            try
+            {
+                File.Delete(tempFile);
+            }
+            catch
+            {
+                // Ignore cleanup errors
+            }
+        }
+        
+        Console.WriteLine($"✅ Generated merged file: {baseOutput}");
     }
     else
     {
-        // ---------- Convert RAW to WAV ----------
-        using var ms = new MemoryStream(pcmBytes);
-        using var raw = new RawSourceWaveStream(ms, new WaveFormat(SampleHz, Bits, Channels));
-        WaveFileWriter.CreateWaveFile(output, raw);
-
-        Console.WriteLine($"✅ Generated {output}");
+        Console.WriteLine($"✅ Generated {completedFiles.Length} numbered files");
+        foreach (var file in completedFiles)
+        {
+            Console.WriteLine($"  📄 {file}");
+        }
     }
+}
 
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"❌ Error: An unexpected error occurred. {ex.Message}");
-        Environment.Exit(1);
-    }
-
-}, instructionsOpt, speaker1Opt, textOpt, outputOpt);
-
-// ---------- Execute ----------
-return await root.InvokeAsync(args);
-
-// ---------- Helper functions ----------
 static string[] FindWavFiles(string pattern)
 {
     var currentDir = Directory.GetCurrentDirectory();
