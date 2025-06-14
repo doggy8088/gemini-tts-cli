@@ -148,6 +148,13 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             instructions = instructions.Replace(":", "");
         }
 
+        // ---------- Validate voice early for both single and batch processing ----------
+        if (!allowedVoices.Contains(speaker1))
+        {
+            Console.WriteLine($"❌ Error: Invalid voice '{speaker1}'. Use 'list-voices' command to see available voices.");
+            Environment.Exit(1);
+        }
+
         // Check if this is a file reference first (before API key validation for better error messages)
         if (!string.IsNullOrEmpty(file) || IsFileReference(text))
         {
@@ -173,13 +180,6 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             {
                 Console.WriteLine("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.");
                 Console.WriteLine("💡 You can get your API key from: https://makersuite.google.com/app/apikey");
-                Environment.Exit(1);
-            }
-
-            // ---------- Validate voice ----------
-            if (!allowedVoices.Contains(speaker1))
-            {
-                Console.WriteLine($"❌ Error: Invalid voice '{speaker1}'. Use 'list-voices' command to see available voices.");
                 Environment.Exit(1);
             }
             
@@ -215,13 +215,6 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             {
                 Console.WriteLine("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.");
                 Console.WriteLine("💡 You can get your API key from: https://makersuite.google.com/app/apikey");
-                Environment.Exit(1);
-            }
-
-            // ---------- Validate voice ----------
-            if (!allowedVoices.Contains(speaker1))
-            {
-                Console.WriteLine($"❌ Error: Invalid voice '{speaker1}'. Use 'list-voices' command to see available voices.");
                 Environment.Exit(1);
             }
 
