@@ -321,8 +321,8 @@ static string GetDefaultOutputFileName(string pattern)
     }
     
     // For patterns like "trial03-*.wav", generate "trial03-merged.wav"
-    var baseName = pattern.Replace("*.wav", "merged.wav");
-    return baseName;
+    var baseName = Path.GetFileNameWithoutExtension(pattern).Replace("*", "").TrimEnd('-');
+    return string.IsNullOrEmpty(baseName) ? "merged.wav" : $"{baseName}-merged.wav";
 }
 
 static void MergeWavFiles(string[] inputFiles, string outputFile)
