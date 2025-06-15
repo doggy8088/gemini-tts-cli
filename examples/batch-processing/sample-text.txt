@@ -1,0 +1,8 @@
+Welcome to Gemini TTS batch processing demonstration.
+This is the first line of text that will be converted to speech.
+Here is another sentence showing how each line becomes a separate audio file.
+Batch processing is useful for creating multiple audio files from a single text document.
+You can use this feature for creating audio books, presentations, or educational content.
+The system automatically filters out empty lines and symbol-only content.
+Each line will be saved as a numbered WAV file for easy organization.
+Thank you for trying the Gemini TTS batch processing example!
