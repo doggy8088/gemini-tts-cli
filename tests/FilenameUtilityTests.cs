@@ -6,11 +6,30 @@ public class FilenameUtilityTests
     [InlineData("output.wav", 1, "output-01.wav")]
     [InlineData("output.wav", 10, "output-10.wav")]
     [InlineData("output.wav", 100, "output-100.wav")]
-    [InlineData("/path/to/output.wav", 5, "/path/to/output-05.wav")]
     [InlineData("output", 3, "output-03.wav")]
     [InlineData("test.mp3", 7, "test-07.mp3")]
     public void GenerateNumberedFilename_ShouldGenerateCorrectFilenames(string baseOutput, int index, string expected)
     {
+        // Act
+        var result = GeminiTtsHelpers.GenerateNumberedFilename(baseOutput, index);
+        
+        // Assert
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void GenerateNumberedFilename_ShouldHandlePathsCorrectly()
+    {
+        // Arrange
+        var baseOutput = Path.Combine("path", "to", "output.wav");
+        var index = 5;
+        
+        // Build expected result using the same path operations
+        var directory = Path.GetDirectoryName(baseOutput) ?? "";
+        var nameWithoutExt = Path.GetFileNameWithoutExtension(baseOutput);
+        var extension = Path.GetExtension(baseOutput);
+        var expected = Path.Combine(directory, $"{nameWithoutExt}-{index:D2}{extension}");
+        
         // Act
         var result = GeminiTtsHelpers.GenerateNumberedFilename(baseOutput, index);
         
