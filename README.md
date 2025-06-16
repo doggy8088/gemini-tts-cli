@@ -241,3 +241,9 @@ MIT License - see LICENSE file for details.
 ## Support
 
 If you encounter any issues or have questions, please [open an issue](https://github.com/doggy8088/gemini-tts-cli/issues) on GitHub.
+
+## Acknowledgments
+
+Google Cloud credits are provided for this project. #AISprint
+
+We thank Google Cloud for supporting this project with credits that help make development and testing possible.
