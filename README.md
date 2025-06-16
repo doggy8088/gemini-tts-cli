@@ -2,6 +2,8 @@
 
 A command-line interface tool for text-to-speech conversion using Google's Gemini TTS API.
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/doggy8088/gemini-tts-cli)
+
 ## Features
 
 - Convert text to speech using Google Gemini TTS API
