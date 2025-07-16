@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Core Development
 - `dotnet restore` - Restore dependencies
-- `dotnet build` - Build the project (run before each commit)
+- `dotnet build gemini-tts-cli.csproj` - Build the project (run before each commit)
 - `dotnet run -- [options]` - Run the CLI tool directly
 - `dotnet run -- --help` - Test CLI interface
 - `dotnet run -- --text "test" --speaker1 zephyr` - Test with actual API calls
