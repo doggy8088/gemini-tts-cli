@@ -20,6 +20,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `dotnet pack --configuration Release` - Create NuGet package
 - `dotnet publish --configuration Release --self-contained true --runtime win-x64 -p:PublishSelfContained=true` - Self-contained Windows build
 - `dotnet publish --configuration Release --self-contained true --runtime linux-x64 -p:PublishSelfContained=true` - Self-contained Linux build
+- `dotnet publish --configuration Release --self-contained true --runtime osx-x64 -p:PublishSelfContained=true` - Self-contained macOS x64 build
+- `dotnet publish --configuration Release --self-contained true --runtime osx-arm64 -p:PublishSelfContained=true` - Self-contained macOS ARM64 build
 
 ## Architecture Overview
 
@@ -122,7 +124,7 @@ GitHub Actions workflows:
 - **test.yml**: Cross-platform build and basic functionality tests
 - **publish.yml**: Automated publishing to NuGet and GitHub releases
 
-Releases are triggered by git tags following pattern `v*.*.*`.
+Releases are triggered by git tags following pattern `v*.*.*` (e.g., `git tag v0.7.0 && git push origin v0.7.0`).
 
 ## Important Files
 
