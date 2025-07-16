@@ -335,8 +335,8 @@ public static class GeminiTtsHelpers
     string prompt = instructions + ": " + text;
     bool isStdout = output == "-";
     
-    // Check cache first if not disabled and not stdout
-    if (!noCache && !isStdout)
+    // Check cache first if not disabled
+    if (!noCache)
     {
         var cacheKey = GenerateCacheKey(instructions, speaker1, text);
         if (TryGetCachedFile(cacheKey, out string cachedFilePath))
@@ -347,8 +347,20 @@ public static class GeminiTtsHelpers
                 if (!isStdout)
                     Console.WriteLine($"🗂️ Using cached result{contextInfo}");
                 
-                File.Copy(cachedFilePath, output, true);
-                return output;
+                if (isStdout)
+                {
+                    // For stdout, read cached file and stream to stdout
+                    using var cachedFile = File.OpenRead(cachedFilePath);
+                    using var stdout = Console.OpenStandardOutput();
+                    await cachedFile.CopyToAsync(stdout);
+                    return "-";
+                }
+                else
+                {
+                    // For file output, copy cached file to output
+                    File.Copy(cachedFilePath, output, true);
+                    return output;
+                }
             }
             catch
             {
@@ -487,13 +499,33 @@ public static class GeminiTtsHelpers
     
     if (isStdout)
     {
-        // Write WAV data directly to stdout
+        // Write WAV data directly to stdout, but also save to cache
         using var stdout = Console.OpenStandardOutput();
         using var wavStream = new MemoryStream();
         using var writer = new WaveFileWriter(wavStream, raw.WaveFormat);
         await raw.CopyToAsync(writer);
         writer.Flush();
         wavStream.Position = 0;
+        
+        // Save to cache if not disabled
+        if (!noCache)
+        {
+            var cacheKey = GenerateCacheKey(instructions, speaker1, text);
+            var cacheFilePath = GetCacheFilePath(cacheKey);
+            try
+            {
+                // Save the WAV data to cache file
+                using var cacheFile = File.Create(cacheFilePath);
+                wavStream.Position = 0;
+                await wavStream.CopyToAsync(cacheFile);
+                wavStream.Position = 0;  // Reset position for stdout output
+            }
+            catch
+            {
+                // Ignore cache save errors
+            }
+        }
+        
         await wavStream.CopyToAsync(stdout);
         return "-";
     }
