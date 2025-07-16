@@ -5,6 +5,7 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Globalization;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -34,6 +35,7 @@ var concurrencyOpt = new Option<int>("--concurrency", () => 1, "Concurrent API r
 concurrencyOpt.AddAlias("-c");
 var mergeOpt = new Option<bool>("--merge", () => false, "Merge all outputs into single file for batch processing");
 mergeOpt.AddAlias("-m");
+var noCacheOpt = new Option<bool>("--no-cache", () => false, "Disable cache feature and force regeneration");
 
 var root = new RootCommand("Gemini TTS CLI - Convert text to speech using Google Gemini API");
 root.AddOption(instructionsOpt);
@@ -43,6 +45,7 @@ root.AddOption(fileOpt);
 root.AddOption(outputOpt);
 root.AddOption(concurrencyOpt);
 root.AddOption(mergeOpt);
+root.AddOption(noCacheOpt);
 
 // Add validation to ensure either text or file is provided
 root.AddValidator(result =>
@@ -132,7 +135,7 @@ mergeCommand.SetHandler((string pattern, string? outputFile) =>
 
 root.AddCommand(mergeCommand);
 
-root.SetHandler(async (string instructions, string speaker1, string? text, string? file, string output, int concurrency, bool merge) =>
+root.SetHandler(async (string instructions, string speaker1, string? text, string? file, string output, int concurrency, bool merge, bool noCache) =>
 {
     try
     {
@@ -203,8 +206,9 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
                 Console.WriteLine($"🎤 Using voice: {speaker1}");
                 Console.WriteLine($"⚡ Concurrency level: {concurrency}");
                 Console.WriteLine($"🔗 Merge mode: {(merge ? "Yes" : "No")}");
+                Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
                 
-                await GeminiTtsHelpers.ProcessBatchTts(instructions, speaker1, textLines, output, concurrency, merge, apiKey);
+                await GeminiTtsHelpers.ProcessBatchTts(instructions, speaker1, textLines, output, concurrency, merge, apiKey, noCache);
             }
             catch (Exception ex)
             {
@@ -236,11 +240,12 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
                 System.Console.WriteLine($"📜 Instructions: {instructions}");
                 System.Console.WriteLine($"🎤 Select voice: {speaker1} ({voiceGender})");
                 System.Console.WriteLine($"📝 The TTS Text: {text}");
+                System.Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
             }
 
             try
             {
-                await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, text!, output, apiKey);
+                await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, text!, output, apiKey, noCache: noCache);
                 if (!isStdout)
                 {
                     Console.WriteLine($"✅ Generated {output}");
@@ -263,7 +268,7 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
         Environment.Exit(1);
     }
 
-}, instructionsOpt, speaker1Opt, textOpt, fileOpt, outputOpt, concurrencyOpt, mergeOpt);
+}, instructionsOpt, speaker1Opt, textOpt, fileOpt, outputOpt, concurrencyOpt, mergeOpt, noCacheOpt);
 
 // ---------- Execute ----------
 return await root.InvokeAsync(args);
@@ -277,6 +282,39 @@ public static class GeminiTtsHelpers
     public const int SampleHz = 24_000; // 24 kHz
     public const int Bits = 16;
     public const int Channels = 1;
+    
+    // Cache methods
+    public static string GenerateCacheKey(string instructions, string speaker1, string text)
+    {
+        var combinedInput = $"{instructions}|{speaker1}|{text}";
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(combinedInput));
+        return "GeminiTtsCli_" + Convert.ToHexString(hash);
+    }
+    
+    public static string GetCacheFilePath(string cacheKey)
+    {
+        return Path.Combine(Path.GetTempPath(), cacheKey + ".wav");
+    }
+    
+    public static bool TryGetCachedFile(string cacheKey, out string cachedFilePath)
+    {
+        cachedFilePath = GetCacheFilePath(cacheKey);
+        return File.Exists(cachedFilePath);
+    }
+    
+    public static void SaveToCache(string cacheKey, string sourceFilePath)
+    {
+        try
+        {
+            var cacheFilePath = GetCacheFilePath(cacheKey);
+            File.Copy(sourceFilePath, cacheFilePath, true);
+        }
+        catch
+        {
+            // Ignore cache save errors
+        }
+    }
 
     public static bool IsFileReference(string? text) => !string.IsNullOrEmpty(text) && (text.StartsWith("@") || text.StartsWith("\"@"));
 
@@ -291,10 +329,35 @@ public static class GeminiTtsHelpers
             .ToArray();
     }
 
-    public static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, int? lineNumber = null, string? textPreview = null)
+    public static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, int? lineNumber = null, string? textPreview = null, bool noCache = false)
 {
     // Compose the instruction for Gemini TTS
     string prompt = instructions + ": " + text;
+    bool isStdout = output == "-";
+    
+    // Check cache first if not disabled and not stdout
+    if (!noCache && !isStdout)
+    {
+        var cacheKey = GenerateCacheKey(instructions, speaker1, text);
+        if (TryGetCachedFile(cacheKey, out string cachedFilePath))
+        {
+            try
+            {
+                var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber})" : "";
+                if (!isStdout)
+                    Console.WriteLine($"🗂️ Using cached result{contextInfo}");
+                
+                File.Copy(cachedFilePath, output, true);
+                return output;
+            }
+            catch
+            {
+                // If cache read fails, continue with normal generation
+                if (!isStdout)
+                    Console.WriteLine($"⚠️ Cache read failed, generating new audio");
+            }
+        }
+    }
 
     // ---------- Compose JSON ----------
     var payload = new
@@ -329,7 +392,6 @@ public static class GeminiTtsHelpers
     int attempt = 0;
     string? base64 = null;
     byte[]? pcmBytes = null;
-    bool isStdout = output == "-";
 
     while (attempt < maxRetries)
     {
@@ -438,6 +500,14 @@ public static class GeminiTtsHelpers
     else
     {
         WaveFileWriter.CreateWaveFile(output, raw);
+        
+        // Save to cache if not disabled
+        if (!noCache)
+        {
+            var cacheKey = GenerateCacheKey(instructions, speaker1, text);
+            SaveToCache(cacheKey, output);
+        }
+        
         return output;
     }
 }
@@ -458,7 +528,7 @@ public static class GeminiTtsHelpers
     return Path.Combine(directory, numberedName);
 }
 
-    public static async Task ProcessBatchTts(string instructions, string speaker1, string[] textLines, string baseOutput, int concurrency, bool merge, string apiKey)
+    public static async Task ProcessBatchTts(string instructions, string speaker1, string[] textLines, string baseOutput, int concurrency, bool merge, string apiKey, bool noCache = false)
     {
         Console.WriteLine($"📚 Processing {textLines.Length} lines with concurrency level {concurrency}");
         
@@ -484,7 +554,7 @@ public static class GeminiTtsHelpers
                 {
                     Console.WriteLine($"🎵 Processing line {index}: {text.Substring(0, Math.Min(50, text.Length))}...");
                     var textPreview = text.Substring(0, Math.Min(30, text.Length)) + (text.Length > 30 ? "..." : "");
-                    return await GenerateSingleTts(instructions, speaker1, text, outputFile, apiKey, index, textPreview);
+                    return await GenerateSingleTts(instructions, speaker1, text, outputFile, apiKey, index, textPreview, noCache);
                 }
                 finally
                 {
