@@ -144,7 +144,10 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
         // ---------- Validate voice early for both single and batch processing ----------
         if (!allowedVoices.Contains(speaker1))
         {
-            Console.WriteLine($"❌ Error: Invalid voice '{speaker1}'. Use 'list-voices' command to see available voices.");
+            if (output != "-")
+            {
+                Console.WriteLine($"❌ Error: Invalid voice '{speaker1}'. Use 'list-voices' command to see available voices.");
+            }
             Environment.Exit(1);
         }
 
@@ -157,13 +160,19 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
             if (extension != ".txt" && extension != ".md")
             {
-                Console.WriteLine($"❌ Error: File must have .txt or .md extension. Found: {extension}");
+                if (output != "-")
+                {
+                    Console.WriteLine($"❌ Error: File must have .txt or .md extension. Found: {extension}");
+                }
                 Environment.Exit(1);
             }
 
             if (!File.Exists(filePath))
             {
-                Console.WriteLine($"❌ Error: File not found: {filePath}");
+                if (output != "-")
+                {
+                    Console.WriteLine($"❌ Error: File not found: {filePath}");
+                }
                 Environment.Exit(1);
             }
 
@@ -171,8 +180,11 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                Console.WriteLine("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.");
-                Console.WriteLine("💡 You can get your API key from: https://makersuite.google.com/app/apikey");
+                if (output != "-")
+                {
+                    Console.WriteLine("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.");
+                    Console.WriteLine("💡 You can get your API key from: https://makersuite.google.com/app/apikey");
+                }
                 Environment.Exit(1);
             }
             
@@ -206,27 +218,40 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                Console.WriteLine("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.");
-                Console.WriteLine("💡 You can get your API key from: https://makersuite.google.com/app/apikey");
+                if (output != "-")
+                {
+                    Console.WriteLine("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.");
+                    Console.WriteLine("💡 You can get your API key from: https://makersuite.google.com/app/apikey");
+                }
                 Environment.Exit(1);
             }
 
             // Single text processing (existing logic)
             // Determine voice gender
             var voiceGender = femaleVoices.Contains(speaker1, StringComparer.OrdinalIgnoreCase) ? "Female" : "Male";
+            bool isStdout = output == "-";
 
-            System.Console.WriteLine($"📜 Instructions: {instructions}");
-            System.Console.WriteLine($"🎤 Select voice: {speaker1} ({voiceGender})");
-            System.Console.WriteLine($"📝 The TTS Text: {text}");
+            if (!isStdout)
+            {
+                System.Console.WriteLine($"📜 Instructions: {instructions}");
+                System.Console.WriteLine($"🎤 Select voice: {speaker1} ({voiceGender})");
+                System.Console.WriteLine($"📝 The TTS Text: {text}");
+            }
 
             try
             {
                 await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, text!, output, apiKey);
-                Console.WriteLine($"✅ Generated {output}");
+                if (!isStdout)
+                {
+                    Console.WriteLine($"✅ Generated {output}");
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Error: Failed to generate audio. {ex.Message}");
+                if (!isStdout)
+                {
+                    Console.WriteLine($"❌ Error: Failed to generate audio. {ex.Message}");
+                }
                 Environment.Exit(1);
             }
         }
@@ -304,6 +329,7 @@ public static class GeminiTtsHelpers
     int attempt = 0;
     string? base64 = null;
     byte[]? pcmBytes = null;
+    bool isStdout = output == "-";
 
     while (attempt < maxRetries)
     {
@@ -331,7 +357,8 @@ public static class GeminiTtsHelpers
             if (finishReason.GetString() != "STOP")
             {
                 var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
-                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: The service declined to generate audio for this request.");
+                if (!isStdout)
+                    Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: The service declined to generate audio for this request.");
                 attempt++;
                 await Task.Delay(1000);
                 continue;
@@ -348,7 +375,8 @@ public static class GeminiTtsHelpers
             if (string.IsNullOrWhiteSpace(base64))
             {
                 var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
-                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received empty audio data from the service.");
+                if (!isStdout)
+                    Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received empty audio data from the service.");
                 attempt++;
                 await Task.Delay(1000);
                 continue;
@@ -360,7 +388,8 @@ public static class GeminiTtsHelpers
         catch (HttpRequestException ex)
         {
             var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
-            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Network error occurred. {ex.Message}");
+            if (!isStdout)
+                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Network error occurred. {ex.Message}");
             attempt++;
             if (attempt < maxRetries)
                 await Task.Delay(1000);
@@ -368,7 +397,8 @@ public static class GeminiTtsHelpers
         catch (JsonException)
         {
             var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
-            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received invalid response from the service.");
+            if (!isStdout)
+                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received invalid response from the service.");
             attempt++;
             if (attempt < maxRetries)
                 await Task.Delay(1000);
@@ -376,7 +406,8 @@ public static class GeminiTtsHelpers
         catch (Exception ex)
         {
             var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
-            Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: {ex.Message}");
+            if (!isStdout)
+                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: {ex.Message}");
             attempt++;
             if (attempt < maxRetries)
                 await Task.Delay(1000);
@@ -391,9 +422,24 @@ public static class GeminiTtsHelpers
     // ---------- Convert RAW to WAV ----------
     using var ms = new MemoryStream(pcmBytes);
     using var raw = new RawSourceWaveStream(ms, new WaveFormat(SampleHz, Bits, Channels));
-    WaveFileWriter.CreateWaveFile(output, raw);
-
-    return output;
+    
+    if (isStdout)
+    {
+        // Write WAV data directly to stdout
+        using var stdout = Console.OpenStandardOutput();
+        using var wavStream = new MemoryStream();
+        using var writer = new WaveFileWriter(wavStream, raw.WaveFormat);
+        await raw.CopyToAsync(writer);
+        writer.Flush();
+        wavStream.Position = 0;
+        await wavStream.CopyToAsync(stdout);
+        return "-";
+    }
+    else
+    {
+        WaveFileWriter.CreateWaveFile(output, raw);
+        return output;
+    }
 }
 
     public static string GenerateNumberedFilename(string baseOutput, int index)

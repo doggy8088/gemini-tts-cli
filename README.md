@@ -9,7 +9,7 @@ A command-line interface tool for text-to-speech conversion using Google's Gemin
 - Convert text to speech using Google Gemini TTS API
 - Multiple voice options (male and female voices)
 - Support for custom instructions
-- Output to WAV format
+- Output to WAV format or stdout
 - Merge multiple WAV files into one with glob pattern support
 - Batch processing from text/markdown files
 - Concurrency support for batch TTS
@@ -86,7 +86,7 @@ gemini-tts list-voices
 - `-f`, `--file` (optional): File path for batch processing (.txt or .md files, required if no `-t`)
 - `-i`, `--instructions` (optional): Instructions for the TTS conversion (default: "Read aloud in a warm, professional and friendly tone")
 - `-s`, `--speaker1` (optional): Voice name for the speaker (default: random selection from available voices)
-- `-o`, `--outputfile` (optional): Output WAV filename (default: output.wav)
+- `-o`, `--outputfile` (optional): Output WAV filename (default: output.wav). Use "-" for stdout output
 - `-c`, `--concurrency` (optional): Concurrent API requests for batch processing (default: 1)
 - `-m`, `--merge` (optional): Merge all outputs into single file for batch processing
 
@@ -158,6 +158,13 @@ gemini-tts merge '**/*.wav' -o all-merged.wav
 # Creates: all-merged.wav
 ```
 
+Output to stdout (pipe to file or other processes):
+```bash
+gemini-tts -t "Hello world" -o - > output.wav
+# or pipe to another command
+gemini-tts -t "Hello world" -o - | aplay
+```
+
 ## Notes
 
 - All input files for batch must have `.txt` or `.md` extension
@@ -224,8 +231,8 @@ The project includes automated GitHub Actions workflows for:
 To trigger a release, create and push a git tag:
 
 ```bash
-git tag v0.6.0
-git push origin v0.6.0
+git tag v0.7.0
+git push origin v0.7.0
 ```
 
 ## License
