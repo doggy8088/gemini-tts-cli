@@ -276,6 +276,8 @@ return await root.InvokeAsync(args);
 // ---------- Helper functions class ----------
 public static class GeminiTtsHelpers
 {
+    private static readonly HttpClient _httpClient = new HttpClient { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") };
+
     // ---------- Constants ----------
     public const string ModelId = "gemini-2.5-flash-preview-tts";
     public const string ApiPath = "streamGenerateContent";
@@ -396,7 +398,6 @@ public static class GeminiTtsHelpers
         }
     };
 
-    using var http = new HttpClient { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") };
     var payloadJson = JsonSerializer.Serialize(payload);
 
     // ---------- Call API ----------
@@ -417,7 +418,7 @@ public static class GeminiTtsHelpers
                 Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
             };
 
-            using var res = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+            using var res = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
             res.EnsureSuccessStatusCode();
 
             json = await res.Content.ReadAsStringAsync();

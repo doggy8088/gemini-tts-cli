@@ -3,59 +3,10 @@ namespace GeminiTtsCli.Tests;
 public class TtsApiTests
 {
     [Fact]
-    public async Task GenerateSingleTts_ShouldReturnOutputPath_WhenApiCallSucceeds()
+    public void GenerateSingleTts_ShouldReturnOutputPath_WhenApiCallSucceeds()
     {
         // Arrange
-        var instructions = "Read aloud";
-        var speaker1 = "zephyr";
-        var text = "Hello world";
         var output = Path.Combine(Path.GetTempPath(), "test_output.wav");
-        var apiKey = "test-api-key";
-
-        // Create a mock response that simulates successful TTS generation
-        var mockResponse = new
-        {
-            candidates = new[]
-            {
-                new
-                {
-                    finishReason = "STOP",
-                    content = new
-                    {
-                        parts = new[]
-                        {
-                            new
-                            {
-                                inlineData = new
-                                {
-                                    data = Convert.ToBase64String(CreateTestPcmData())
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        var responseJson = JsonSerializer.Serialize(new[] { mockResponse });
-
-        // Mock HttpMessageHandler to intercept HTTP calls
-        var mockHandler = new Mock<HttpMessageHandler>();
-        mockHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = HttpStatusCode.OK,
-                Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
-            });
-
-        var httpClient = new HttpClient(mockHandler.Object)
-        {
-            BaseAddress = new Uri("https://generativelanguage.googleapis.com/")
-        };
 
         try
         {
@@ -73,7 +24,7 @@ public class TtsApiTests
             
             // Verify parameters
             var parameters = method.GetParameters();
-            Assert.Equal(7, parameters.Length);
+            Assert.Equal(8, parameters.Length);
             Assert.Equal(typeof(string), parameters[0].ParameterType); // instructions
             Assert.Equal(typeof(string), parameters[1].ParameterType); // speaker1
             Assert.Equal(typeof(string), parameters[2].ParameterType); // text
@@ -81,6 +32,7 @@ public class TtsApiTests
             Assert.Equal(typeof(string), parameters[4].ParameterType); // apiKey
             Assert.Equal(typeof(int?), parameters[5].ParameterType);   // lineNumber
             Assert.Equal(typeof(string), parameters[6].ParameterType); // textPreview
+            Assert.Equal(typeof(bool), parameters[7].ParameterType);   // noCache
         }
         finally
         {
@@ -93,12 +45,9 @@ public class TtsApiTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData(null)]
-    public async Task GenerateSingleTts_ShouldHandleInvalidApiKey(string? apiKey)
+    public void GenerateSingleTts_ShouldHandleInvalidApiKey(string? apiKey)
     {
         // Arrange
-        var instructions = "Read aloud";
-        var speaker1 = "zephyr";
-        var text = "Hello world";
         var output = Path.Combine(Path.GetTempPath(), "test_output.wav");
 
         try
@@ -109,6 +58,9 @@ public class TtsApiTests
             var method = typeof(GeminiTtsHelpers).GetMethod("GenerateSingleTts");
             Assert.NotNull(method);
             
+            // Avoid unused variable warning
+            _ = apiKey;
+
             // The method should exist and be callable (we can't test the HTTP part easily)
             // without significant refactoring to make it more testable
         }
@@ -120,7 +72,7 @@ public class TtsApiTests
     }
 
     [Fact]
-    public async Task ProcessBatchTts_ShouldExist_AndHaveCorrectSignature()
+    public void ProcessBatchTts_ShouldExist_AndHaveCorrectSignature()
     {
         // Act
         var method = typeof(GeminiTtsHelpers).GetMethod("ProcessBatchTts");
@@ -132,7 +84,7 @@ public class TtsApiTests
         Assert.Equal(typeof(Task), method.ReturnType);
         
         var parameters = method.GetParameters();
-        Assert.Equal(7, parameters.Length);
+        Assert.Equal(8, parameters.Length);
         Assert.Equal(typeof(string), parameters[0].ParameterType);   // instructions
         Assert.Equal(typeof(string), parameters[1].ParameterType);   // speaker1
         Assert.Equal(typeof(string[]), parameters[2].ParameterType); // textLines
@@ -140,26 +92,7 @@ public class TtsApiTests
         Assert.Equal(typeof(int), parameters[4].ParameterType);      // concurrency
         Assert.Equal(typeof(bool), parameters[5].ParameterType);     // merge
         Assert.Equal(typeof(string), parameters[6].ParameterType);   // apiKey
-    }
-
-    private static byte[] CreateTestPcmData()
-    {
-        // Create minimal PCM data (24kHz, 16-bit, mono)
-        var sampleRate = 24000;
-        var durationSeconds = 0.1f; // 100ms
-        var sampleCount = (int)(sampleRate * durationSeconds);
-        var pcmData = new byte[sampleCount * 2]; // 16-bit = 2 bytes per sample
-
-        // Generate a simple sine wave
-        for (int i = 0; i < sampleCount; i++)
-        {
-            var sample = (short)(Math.Sin(2.0 * Math.PI * 440.0 * i / sampleRate) * 1000);
-            var bytes = BitConverter.GetBytes(sample);
-            pcmData[i * 2] = bytes[0];
-            pcmData[i * 2 + 1] = bytes[1];
-        }
-
-        return pcmData;
+        Assert.Equal(typeof(bool), parameters[7].ParameterType);     // noCache
     }
 }
 
