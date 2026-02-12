@@ -331,99 +331,99 @@ public static class GeminiTtsHelpers
             .ToArray();
     }
 
-    public static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, int? lineNumber = null, string? textPreview = null, bool noCache = false)
-{
-    // Compose the instruction for Gemini TTS
-    string prompt = instructions + ": " + text;
-    bool isStdout = output == "-";
-    
-    // Check cache first if not disabled
-    if (!noCache)
+    public static Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, int? lineNumber = null, string? textPreview = null, bool noCache = false)
+        => GenerateSingleTtsWithClient(_httpClient, instructions, speaker1, text, output, apiKey, lineNumber, textPreview, noCache);
+
+    internal static async Task<string> GenerateSingleTtsWithClient(HttpClient httpClient, string instructions, string speaker1, string text, string output, string apiKey, int? lineNumber = null, string? textPreview = null, bool noCache = false)
     {
-        var cacheKey = GenerateCacheKey(instructions, speaker1, text);
-        if (TryGetCachedFile(cacheKey, out string cachedFilePath))
+        // Compose the instruction for Gemini TTS
+        string prompt = instructions + ": " + text;
+        bool isStdout = output == "-";
+
+        // Check cache first if not disabled
+        if (!noCache)
+        {
+            var cacheKey = GenerateCacheKey(instructions, speaker1, text);
+            if (TryGetCachedFile(cacheKey, out string cachedFilePath))
+            {
+                try
+                {
+                    var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber})" : "";
+                    if (!isStdout)
+                        Console.WriteLine($"🗂️ Using cached result{contextInfo}");
+
+                    if (isStdout)
+                    {
+                        // For stdout, read cached file and stream to stdout
+                        using var cachedFile = File.OpenRead(cachedFilePath);
+                        using var stdout = Console.OpenStandardOutput();
+                        await cachedFile.CopyToAsync(stdout);
+                        return "-";
+                    }
+                    else
+                    {
+                        // For file output, copy cached file to output
+                        File.Copy(cachedFilePath, output, true);
+                        return output;
+                    }
+                }
+                catch
+                {
+                    // If cache read fails, continue with normal generation
+                    if (!isStdout)
+                        Console.WriteLine($"⚠️ Cache read failed, generating new audio");
+                }
+            }
+        }
+
+        // ---------- Compose JSON ----------
+        var payload = new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    role  = "user",
+                    parts = new[] { new { text = prompt } }
+                }
+            },
+            generationConfig = new
+            {
+                responseModalities = new[] { "audio" },
+                temperature = 1,
+                speech_config = new
+                {
+                    voice_config = new
+                    {
+                        prebuilt_voice_config = new { voice_name = Capitalize(speaker1) }
+                    }
+                }
+            }
+        };
+
+        var payloadJson = JsonSerializer.Serialize(payload);
+
+        // ---------- Call API ----------
+        const int maxRetries = 3;
+        int attempt = 0;
+        byte[]? pcmBytes = null;
+
+        while (attempt < maxRetries)
         {
             try
             {
-                var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber})" : "";
-                if (!isStdout)
-                    Console.WriteLine($"🗂️ Using cached result{contextInfo}");
-                
-                if (isStdout)
+                // Create a new request for each attempt
+                var req = new HttpRequestMessage(HttpMethod.Post,
+                    $"v1beta/models/{ModelId}:{ApiPath}?key={apiKey}")
                 {
-                    // For stdout, read cached file and stream to stdout
-                    using var cachedFile = File.OpenRead(cachedFilePath);
-                    using var stdout = Console.OpenStandardOutput();
-                    await cachedFile.CopyToAsync(stdout);
-                    return "-";
-                }
-                else
-                {
-                    // For file output, copy cached file to output
-                    File.Copy(cachedFilePath, output, true);
-                    return output;
-                }
-            }
-            catch
-            {
-                // If cache read fails, continue with normal generation
-                if (!isStdout)
-                    Console.WriteLine($"⚠️ Cache read failed, generating new audio");
-            }
-        }
-    }
+                    Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
+                };
 
-    // ---------- Compose JSON ----------
-    var payload = new
-    {
-        contents = new[]
-        {
-            new
-            {
-                role  = "user",
-                parts = new[] { new { text = prompt } }
-            }
-        },
-        generationConfig = new
-        {
-            responseModalities = new[] { "audio" },
-            temperature = 1,
-            speech_config = new
-            {
-                voice_config = new
-                {
-                    prebuilt_voice_config = new { voice_name = Capitalize(speaker1) }
-                }
-            }
-        }
-    };
+                using var res = await httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+                res.EnsureSuccessStatusCode();
 
-    var payloadJson = JsonSerializer.Serialize(payload);
-
-    // ---------- Call API ----------
-    const int maxRetries = 3;
-    int attempt = 0;
-    string? base64 = null;
-    byte[]? pcmBytes = null;
-
-    while (attempt < maxRetries)
-    {
-        string json = string.Empty;
-        try
-        {
-            // Create a new request for each attempt
-            var req = new HttpRequestMessage(HttpMethod.Post,
-                $"v1beta/models/{ModelId}:{ApiPath}?key={apiKey}")
-            {
-                Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
-            };
-
-            using var res = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-            res.EnsureSuccessStatusCode();
-
-            json = await res.Content.ReadAsStringAsync();
-
-            using var doc = JsonDocument.Parse(json);
+            using var stream = await res.Content.ReadAsStreamAsync();
+            using var doc = await JsonDocument.ParseAsync(stream);
 
             var finishReason = doc.RootElement[0]
                           .GetProperty("candidates")[0]
@@ -439,15 +439,14 @@ public static class GeminiTtsHelpers
                 continue;
             }
 
-            base64 = doc.RootElement[0]
+            var dataProperty = doc.RootElement[0]
                           .GetProperty("candidates")[0]
                           .GetProperty("content")
                           .GetProperty("parts")[0]
                           .GetProperty("inlineData")
-                          .GetProperty("data")
-                          .GetString();
+                          .GetProperty("data");
 
-            if (string.IsNullOrWhiteSpace(base64))
+            if (dataProperty.ValueKind == JsonValueKind.Null)
             {
                 var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
                 if (!isStdout)
@@ -457,7 +456,17 @@ public static class GeminiTtsHelpers
                 continue;
             }
 
-            pcmBytes = Convert.FromBase64String(base64);
+            pcmBytes = dataProperty.GetBytesFromBase64();
+
+            if (pcmBytes.Length == 0)
+            {
+                var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
+                if (!isStdout)
+                    Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received empty audio data from the service.");
+                attempt++;
+                await Task.Delay(1000);
+                continue;
+            }
             break;
         }
         catch (HttpRequestException ex)
