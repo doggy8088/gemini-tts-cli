@@ -99,7 +99,7 @@ mergeCommand.SetHandler((string pattern, string? outputFile) =>
         // Validate pattern has .wav extension
         if (!pattern.Contains(".wav"))
         {
-            GeminiTtsHelpers.ExitWithError("❌ Error: Pattern must include '*.wav' file extension.", null);
+            GeminiTtsHelpers.ExitWithError("❌ Error: Pattern must include '*.wav' file extension.");
         }
 
         // Find WAV files matching the pattern
@@ -107,7 +107,7 @@ mergeCommand.SetHandler((string pattern, string? outputFile) =>
         
         if (wavFiles.Length == 0)
         {
-            GeminiTtsHelpers.ExitWithError($"❌ Error: No WAV files found matching pattern '{pattern}'.", null);
+            GeminiTtsHelpers.ExitWithError($"❌ Error: No WAV files found matching pattern '{pattern}'.");
         }
 
         // Determine output filename
@@ -127,7 +127,7 @@ mergeCommand.SetHandler((string pattern, string? outputFile) =>
     }
     catch (Exception ex)
     {
-        GeminiTtsHelpers.ExitWithError($"❌ Error: {ex.Message}", null);
+        GeminiTtsHelpers.ExitWithError($"❌ Error: {ex.Message}");
     }
 }, patternArg, mergeOutputOpt);
 
@@ -145,7 +145,7 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
         // ---------- Validate voice early for both single and batch processing ----------
         if (!allowedVoices.Contains(speaker1))
         {
-            GeminiTtsHelpers.ExitWithError($"❌ Error: Invalid voice '{speaker1}'. Use 'list-voices' command to see available voices.", output);
+            GeminiTtsHelpers.ExitWithError($"❌ Error: Invalid voice '{speaker1}'. Use 'list-voices' command to see available voices.");
         }
 
         // Check if this is a file reference first (before API key validation for better error messages)
@@ -157,19 +157,19 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
             if (extension != ".txt" && extension != ".md")
             {
-                GeminiTtsHelpers.ExitWithError($"❌ Error: File must have .txt or .md extension. Found: {extension}", output);
+                GeminiTtsHelpers.ExitWithError($"❌ Error: File must have .txt or .md extension. Found: {extension}");
             }
 
             if (!File.Exists(filePath))
             {
-                GeminiTtsHelpers.ExitWithError($"❌ Error: File not found: {filePath}", output);
+                GeminiTtsHelpers.ExitWithError($"❌ Error: File not found: {filePath}");
             }
 
             // ---------- Check environment variables ----------
             var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                GeminiTtsHelpers.ExitWithError("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.", output, "💡 You can get your API key from: https://makersuite.google.com/app/apikey");
+                GeminiTtsHelpers.ExitWithError("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.", "💡 You can get your API key from: https://makersuite.google.com/app/apikey");
             }
             
             try
@@ -178,7 +178,7 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
                 
                 if (textLines.Length == 0)
                 {
-                    GeminiTtsHelpers.ExitWithError($"❌ Error: No valid text lines found in file '{filePath}'.", output);
+                    GeminiTtsHelpers.ExitWithError($"❌ Error: No valid text lines found in file '{filePath}'.");
                 }
 
                 Console.WriteLine($"📁 Processing file: {filePath}");
@@ -192,7 +192,7 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             }
             catch (Exception ex)
             {
-                GeminiTtsHelpers.ExitWithError($"❌ Error processing file: {ex.Message}", output);
+                GeminiTtsHelpers.ExitWithError($"❌ Error processing file: {ex.Message}");
             }
         }
         else
@@ -201,7 +201,7 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                GeminiTtsHelpers.ExitWithError("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.", output, "💡 You can get your API key from: https://makersuite.google.com/app/apikey");
+                GeminiTtsHelpers.ExitWithError("❌ Error: Missing API key. Please set the GEMINI_API_KEY environment variable.", "💡 You can get your API key from: https://makersuite.google.com/app/apikey");
             }
 
             // Single text processing (existing logic)
@@ -227,14 +227,14 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             }
             catch (Exception ex)
             {
-                GeminiTtsHelpers.ExitWithError($"❌ Error: Failed to generate audio. {ex.Message}", output);
+                GeminiTtsHelpers.ExitWithError($"❌ Error: Failed to generate audio. {ex.Message}");
             }
         }
 
     }
     catch (Exception ex)
     {
-        GeminiTtsHelpers.ExitWithError($"❌ Error: An unexpected error occurred. {ex.Message}", output);
+        GeminiTtsHelpers.ExitWithError($"❌ Error: An unexpected error occurred. {ex.Message}");
     }
 
 }, instructionsOpt, speaker1Opt, textOpt, fileOpt, outputOpt, concurrencyOpt, mergeOpt, noCacheOpt);
@@ -249,15 +249,12 @@ public static class GeminiTtsHelpers
 
     // ---------- Constants ----------
     [DoesNotReturn]
-    public static void ExitWithError(string message, string? output = null, string? extraInfo = null)
+    public static void ExitWithError(string message, string? extraInfo = null)
     {
-        if (output == null || output != "-")
+        Console.Error.WriteLine(message);
+        if (!string.IsNullOrEmpty(extraInfo))
         {
-            Console.WriteLine(message);
-            if (!string.IsNullOrEmpty(extraInfo))
-            {
-                Console.WriteLine(extraInfo);
-            }
+            Console.Error.WriteLine(extraInfo);
         }
         Environment.Exit(1);
     }
