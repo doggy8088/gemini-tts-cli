@@ -45,6 +45,7 @@ public class CacheTests
     [InlineData("", "", "")]
     [InlineData("instructions", "", "text")]
     [InlineData("", "speaker", "text")]
+    [InlineData("instructions", "speaker", "")]
     public void GenerateCacheKey_ShouldHandleEmptyInputs(string instructions, string speaker, string text)
     {
         // Act
@@ -52,7 +53,8 @@ public class CacheTests
 
         // Assert
         Assert.StartsWith("GeminiTtsCli_", key);
-        Assert.True(key.Length > "GeminiTtsCli_".Length);
+        // "GeminiTtsCli_" (13 chars) + SHA256 hex string (64 chars) = 77 chars
+        Assert.Equal(77, key.Length);
     }
 
     [Fact]
