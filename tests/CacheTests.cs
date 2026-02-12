@@ -5,6 +5,8 @@ namespace GeminiTtsCli.Tests;
 
 public class CacheTests
 {
+    private const string CacheKeyPrefix = "GeminiTtsCli_";
+
     [Fact]
     public void GenerateCacheKey_ShouldReturnDeterministicHash()
     {
@@ -52,9 +54,9 @@ public class CacheTests
         var key = GeminiTtsHelpers.GenerateCacheKey(instructions, speaker, text);
 
         // Assert
-        Assert.StartsWith("GeminiTtsCli_", key);
-        // "GeminiTtsCli_" (13 chars) + SHA256 hex string (64 chars) = 77 chars
-        Assert.Equal(77, key.Length);
+        Assert.StartsWith(CacheKeyPrefix, key);
+        // Prefix (13 chars) + SHA256 hex string (64 chars)
+        Assert.Equal(CacheKeyPrefix.Length + 64, key.Length);
     }
 
     [Fact]
@@ -62,7 +64,7 @@ public class CacheTests
     {
         // Arrange
         var key = GeminiTtsHelpers.GenerateCacheKey("i", "s", "t");
-        var hashPart = key.Substring("GeminiTtsCli_".Length);
+        var hashPart = key.Substring(CacheKeyPrefix.Length);
 
         // Act & Assert
         // Hex string should be valid characters 0-9, A-F
