@@ -637,14 +637,14 @@ public static class GeminiTtsHelpers
         if (pattern.StartsWith("**/"))
         {
             var searchPattern = pattern[3..]; // Remove "**/"
-            return Directory.GetFiles(currentDir, searchPattern, SearchOption.AllDirectories)
+            return Directory.EnumerateFiles(currentDir, searchPattern, SearchOption.AllDirectories)
                            .Where(f => f.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
                            .OrderBy(f => f)
                            .ToArray();
         }
         
         // Handle regular patterns (*.wav, trial03-*.wav)
-        return Directory.GetFiles(currentDir, pattern, SearchOption.TopDirectoryOnly)
+        return Directory.EnumerateFiles(currentDir, pattern, SearchOption.TopDirectoryOnly)
                        .Where(f => f.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
                        .OrderBy(f => f)
                        .ToArray();
