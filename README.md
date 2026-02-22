@@ -100,6 +100,7 @@ gemini-tts list-voices
 - `-o`, `--outputfile` (optional): Output WAV filename (default: output.wav). Use "-" for stdout output
 - `--sayit` (optional): Play audio directly on Windows and skip file output (single text only)
 - `--single-output` (optional): Output a single WAV from the entire `--file` content (disables batch mode)
+- `-v`, `--version` (optional): Show version and exit
 - `-c`, `--concurrency` (optional): Concurrent API requests for batch processing (default: 1)
 - `-m`, `--merge` (optional): Merge all outputs into single file for batch processing
 
@@ -161,6 +162,11 @@ gemini-tts -f "test.txt" -s zephyr -c 3
 List all available voices:
 ```bash
 gemini-tts list-voices
+```
+
+Show version:
+```bash
+gemini-tts --version
 ```
 
 Merge all WAV files in current directory:

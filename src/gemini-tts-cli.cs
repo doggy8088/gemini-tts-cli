@@ -5,6 +5,7 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Globalization;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -39,6 +40,8 @@ mergeOpt.AddAlias("-m");
 var noCacheOpt = new Option<bool>("--no-cache", () => false, "Disable cache feature and force regeneration");
 var sayItOpt = new Option<bool>("--sayit", () => false, "Play audio directly on Windows instead of writing output file");
 var singleOutputOpt = new Option<bool>("--single-output", () => false, "Output a single WAV from the entire --file content (disables batch mode)");
+var versionOpt = new Option<bool>("--version", () => false, "Show version and exit");
+versionOpt.AddAlias("-v");
 
 var root = new RootCommand("Gemini TTS CLI - Convert text to speech using Google Gemini API");
 root.AddOption(instructionsOpt);
@@ -51,10 +54,17 @@ root.AddOption(mergeOpt);
 root.AddOption(noCacheOpt);
 root.AddOption(sayItOpt);
 root.AddOption(singleOutputOpt);
+root.AddOption(versionOpt);
 
 // Add validation to ensure either text or file is provided
 root.AddValidator(result =>
 {
+    var showVersion = result.GetValueForOption(versionOpt);
+    if (showVersion)
+    {
+        return;
+    }
+
     var text = result.GetValueForOption(textOpt);
     var file = result.GetValueForOption(fileOpt);
     var sayIt = result.GetValueForOption(sayItOpt);
@@ -170,6 +180,13 @@ root.SetHandler(async (InvocationContext context) =>
         var noCache = context.ParseResult.GetValueForOption(noCacheOpt);
         var sayIt = context.ParseResult.GetValueForOption(sayItOpt);
         var singleOutput = context.ParseResult.GetValueForOption(singleOutputOpt);
+        var showVersion = context.ParseResult.GetValueForOption(versionOpt);
+
+        if (showVersion)
+        {
+            Console.WriteLine(GeminiTtsHelpers.GetVersionString());
+            return;
+        }
 
         if (instructions.Contains(":"))
         {
@@ -336,6 +353,18 @@ public static class GeminiTtsHelpers
     public const int Bits = 16;
     public const int Channels = 1;
     
+    public static string GetVersionString()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var info = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(info))
+        {
+            return info;
+        }
+
+        return assembly.GetName().Version?.ToString() ?? "unknown";
+    }
+
     // Cache methods
     public static string GenerateCacheKey(string instructions, string speaker1, string text)
     {
