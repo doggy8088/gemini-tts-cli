@@ -3,7 +3,7 @@ i=1
 run_tts() {
     export INSTRUCTIONS="$3"
     export TEXT="$2"
-    # dotnet run gemini-tts-cli.cs --instructions "$INSTRUCTIONS" --speaker1 "$1" --text "$TEXT" --outputfile "trial02-$(printf "%02d.wav" $i)" &
+    # dotnet run src/gemini-tts-cli.cs --instructions "$INSTRUCTIONS" --speaker1 "$1" --text "$TEXT" --outputfile "trial02-$(printf "%02d.wav" $i)" &
 
     echo "gemini-tts --instructions \"$INSTRUCTIONS\" --speaker1 \"$1\" --text \"$TEXT\" --outputfile output-$(printf "%02d.wav" $i)"
     gemini-tts --instructions "$INSTRUCTIONS" --speaker1 "$1" --text "$TEXT" --outputfile "output-$(printf "%02d.wav" $i)"

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Core Development
 - `dotnet restore` - Restore dependencies
-- `dotnet build gemini-tts-cli.csproj` - Build the project (run before each commit)
+- `dotnet build src/gemini-tts-cli.csproj` - Build the project (run before each commit)
 - `dotnet run -- [options]` - Run the CLI tool directly
 - `dotnet run -- --help` - Test CLI interface
 - `dotnet run -- --text "test" --speaker1 zephyr` - Test with actual API calls
@@ -25,11 +25,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a single-file .NET 8.0 CLI application (`gemini-tts-cli.cs`) that provides text-to-speech functionality using Google's Gemini TTS API. The architecture is intentionally simple with all functionality contained in one file.
+This is a single-file .NET 8.0 CLI application (`src/gemini-tts-cli.cs`) that provides text-to-speech functionality using Google's Gemini TTS API. The architecture is intentionally simple with all functionality contained in one file.
 
 ### Key Components
 
-**Main Application (`gemini-tts-cli.cs`)**:
+**Main Application (`src/gemini-tts-cli.cs`)**:
 - CLI command setup using System.CommandLine
 - Voice management with predefined male/female voice arrays
 - API integration with Google Gemini 2.5 Flash Preview TTS
@@ -102,7 +102,7 @@ Test dependencies: xUnit, Moq, NAudio, System.CommandLine
 - For major changes, test with actual API calls
 
 ### Code Standards
-- Single-file architecture maintained in `gemini-tts-cli.cs`
+- Single-file architecture maintained in `src/gemini-tts-cli.cs`
 - Voice validation against `allowedVoices` HashSet
 - Retry mechanisms for API calls (3 attempts)
 - Clear error messages with actionable guidance
@@ -128,8 +128,8 @@ Releases are triggered by git tags following pattern `v*.*.*` (e.g., `git tag v0
 
 ## Important Files
 
-- `gemini-tts-cli.cs` - Main application (single file containing all logic)
-- `gemini-tts-cli.csproj` - Project configuration with dual build support
+- `src/gemini-tts-cli.cs` - Main application (single file containing all logic)
+- `src/gemini-tts-cli.csproj` - Project configuration with dual build support
 - `scripts/generate-all.sh` - Bash script for batch processing examples
 - `scripts/generate-all.ps1` - PowerShell equivalent for Windows
 - `examples/` - Comprehensive usage examples for different scenarios

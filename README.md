@@ -23,6 +23,15 @@ A command-line interface tool for text-to-speech conversion using Google's Gemin
 dotnet tool install -g GeminiTtsCli
 ```
 
+### Windows Installer (.exe)
+
+Download the Windows installer from the [releases page](https://github.com/doggy8088/gemini-tts-cli/releases) and run `gemini-tts-cli-<version>-win-x64-setup.exe`.
+
+The installer can:
+- Install the CLI into `Program Files`
+- Add the installation folder to `PATH`
+- Register an uninstaller in Windows
+
 ### Manual Installation
 
 Download the appropriate binary for your platform from the [releases page](https://github.com/doggy8088/gemini-tts-cli/releases).
@@ -225,8 +234,30 @@ dotnet publish --configuration Release --self-contained true --runtime osx-arm64
 The project includes automated GitHub Actions workflows for:
 
 - Building cross-platform binaries
+- Building a Windows installer (`.exe`) via Inno Setup
 - Publishing to NuGet Gallery
 - Creating GitHub releases
+
+#### 3. Windows Installer (Inno Setup)
+
+Prerequisite:
+- Install [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+
+Build installer locally (PowerShell):
+
+```powershell
+./scripts/build-windows-installer.ps1
+```
+
+Specify a version explicitly (optional):
+
+```powershell
+./scripts/build-windows-installer.ps1 -Version 0.7.2
+```
+
+Outputs:
+- Published app files: `artifacts/windows-installer/app/`
+- Installer executable: `artifacts/windows-installer/out/`
 
 To trigger a release, create and push a git tag:
 

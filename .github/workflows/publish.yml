@@ -52,14 +52,14 @@ jobs:
 
     - name: Update project version
       run: |
-        sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.get_version.outputs.VERSION }}<\/Version>/" gemini-tts-cli.csproj
+        sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.get_version.outputs.VERSION }}<\/Version>/" src/gemini-tts-cli.csproj
 
     - name: Restore dependencies
-      run: dotnet restore gemini-tts-cli.csproj
+      run: dotnet restore src/gemini-tts-cli.csproj
 
     - name: Build and publish for ${{ matrix.name }}
       run: |
-        dotnet publish gemini-tts-cli.csproj \
+        dotnet publish src/gemini-tts-cli.csproj \
           -c Release \
           --nologo \
           --self-contained \
@@ -118,6 +118,53 @@ jobs:
         name: gemini-tts-cli-${{ matrix.os }}
         path: ${{ steps.artifact_name.outputs.ARCHIVE_NAME }}
 
+  build-windows-installer:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Get version from tag or input
+      id: get_version
+      shell: pwsh
+      run: |
+        if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          "VERSION=${{ github.event.inputs.version }}" >> $env:GITHUB_OUTPUT
+        } else {
+          "VERSION=$($env:GITHUB_REF -replace '^refs/tags/v', '')" >> $env:GITHUB_OUTPUT
+        }
+
+    - name: Update project version
+      shell: pwsh
+      run: |
+        $path = "src/gemini-tts-cli.csproj"
+        $content = Get-Content $path -Raw
+        $content = $content -replace "<Version>.*?</Version>", "<Version>${{ steps.get_version.outputs.VERSION }}</Version>"
+        Set-Content -Path $path -Value $content -NoNewline
+
+    - name: Restore dependencies
+      run: dotnet restore src/gemini-tts-cli.csproj
+
+    - name: Install Inno Setup
+      shell: pwsh
+      run: choco install innosetup --no-progress -y
+
+    - name: Build Windows installer
+      shell: pwsh
+      run: |
+        ./scripts/build-windows-installer.ps1 -Version "${{ steps.get_version.outputs.VERSION }}" -Configuration Release
+
+    - name: Upload Windows installer artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: gemini-tts-cli-windows-installer
+        path: artifacts/windows-installer/out/*.exe
+
   publish-nuget:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
@@ -137,16 +184,16 @@ jobs:
 
     - name: Update project version
       run: |
-        sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.get_version.outputs.VERSION }}<\/Version>/" gemini-tts-cli.csproj
+        sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.get_version.outputs.VERSION }}<\/Version>/" src/gemini-tts-cli.csproj
 
     - name: Restore dependencies
-      run: dotnet restore gemini-tts-cli.csproj
+      run: dotnet restore src/gemini-tts-cli.csproj
 
     - name: Build
-      run: dotnet build gemini-tts-cli.csproj --configuration Release --no-restore
+      run: dotnet build src/gemini-tts-cli.csproj --configuration Release --no-restore
 
     - name: Pack
-      run: dotnet pack gemini-tts-cli.csproj --configuration Release --no-build --output ./nupkg
+      run: dotnet pack src/gemini-tts-cli.csproj --configuration Release --no-build --output ./nupkg
 
     - name: Publish to NuGet
       run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
@@ -155,7 +202,7 @@ jobs:
   create-release:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: build-and-publish
+    needs: [build-and-publish, build-windows-installer]
 
     steps:
     - uses: actions/checkout@v4
@@ -189,6 +236,9 @@ jobs:
 
           #### Manual Installation
           Download the appropriate binary for your platform from the assets below.
+
+          #### Windows Installer (.exe)
+          Download and run the `gemini-tts-cli-*-win-x64-setup.exe` installer.
 
           ### Usage
           ```bash

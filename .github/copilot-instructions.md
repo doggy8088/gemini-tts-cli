@@ -18,7 +18,7 @@ This is a .NET 8.0 C# command-line application that provides text-to-speech func
 
 ## Repository Structure
 - `gemini-tts-cli.cs`: Main application file containing all CLI logic, API integration, and audio processing
-- `gemini-tts-cli.csproj`: Project configuration with package metadata and build settings
+- `src/gemini-tts-cli.csproj`: Project configuration with package metadata and build settings
 - `scripts/`: Batch processing scripts for generating multiple TTS files
   - `generate-all.sh`: Bash script for Unix/Linux systems
   - `generate-all.ps1`: PowerShell script for Windows systems
@@ -96,7 +96,7 @@ This is a .NET 8.0 C# command-line application that provides text-to-speech func
 - macOS x64 and ARM64
 
 ### Release Process
-- Version updates are managed in `gemini-tts-cli.csproj`
+- Version updates are managed in `src/gemini-tts-cli.csproj`
 - GitHub Actions automatically handles cross-platform builds and publishing
 - Tags trigger automated releases to both NuGet and GitHub
 

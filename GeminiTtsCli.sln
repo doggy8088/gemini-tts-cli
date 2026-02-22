@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "gemini-tts-cli", "gemini-tts-cli.csproj", "{86C9A1F4-B8F1-4228-91FE-57660F5CB762}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "gemini-tts-cli", "src\gemini-tts-cli.csproj", "{86C9A1F4-B8F1-4228-91FE-57660F5CB762}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeminiTtsCli.Tests", "tests\GeminiTtsCli.Tests.csproj", "{51EA9E99-D727-4849-9A08-87B503B29283}"
 EndProject

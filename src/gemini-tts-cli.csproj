@@ -39,12 +39,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Remove="tests/**" />
-    <None Remove="tests/**" />
+    <None Include="..\README.md" Link="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <!-- Trim warnings suppression for known safe packages -->
