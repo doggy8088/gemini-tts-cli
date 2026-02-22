@@ -1,0 +1,3 @@
+interface:
+  display_name: "Gemini TTS CLI"
+  short_description: "Help with Gemini TTS CLI usage and workflows"
