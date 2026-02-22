@@ -10,6 +10,8 @@ A command-line interface tool for text-to-speech conversion using Google's Gemin
 - Multiple voice options (male and female voices)
 - Support for custom instructions
 - Output to WAV format or stdout
+- Direct playback on Windows with `--sayit`
+- Single output file from full `--file` content with `--single-output`
 - Merge multiple WAV files into one with glob pattern support
 - Batch processing from text/markdown files
 - Concurrency support for batch TTS
@@ -68,13 +70,13 @@ To make it permanent, add the export line to your shell profile (`.bashrc`, `.zs
 ### Single Text to Speech
 
 ```bash
-gemini-tts -t "Text to convert" [-i "Your instructions"] [-s <voice-name>] [-o output.wav]
+gemini-tts -t "Text to convert" [-i "Your instructions"] [-s <voice-name>] [-o output.wav] [--sayit]
 ```
 
 ### Batch Processing from File
 
 ```bash
-gemini-tts -f "input.txt" [-i "Your instructions"] [-s <voice-name>] [-m] [-c 20] [-o output.wav]
+gemini-tts -f "input.txt" [-i "Your instructions"] [-s <voice-name>] [-m] [-c 20] [-o output.wav] [--single-output]
 ```
 
 ### Merge WAV Files
@@ -96,6 +98,8 @@ gemini-tts list-voices
 - `-i`, `--instructions` (optional): Instructions for the TTS conversion (default: "Read aloud in a warm, professional and friendly tone")
 - `-s`, `--speaker1` (optional): Voice name for the speaker (default: random selection from available voices)
 - `-o`, `--outputfile` (optional): Output WAV filename (default: output.wav). Use "-" for stdout output
+- `--sayit` (optional): Play audio directly on Windows and skip file output (single text only)
+- `--single-output` (optional): Output a single WAV from the entire `--file` content (disables batch mode)
 - `-c`, `--concurrency` (optional): Concurrent API requests for batch processing (default: 1)
 - `-m`, `--merge` (optional): Merge all outputs into single file for batch processing
 
@@ -133,9 +137,19 @@ With specific voice but default instructions:
 gemini-tts -s zephyr -t "Hello, this is a test of the Gemini TTS system" -o greeting.wav
 ```
 
+Play audio directly on Windows (no output file):
+```bash
+gemini-tts -t "Hello, this is a test of the Gemini TTS system" --sayit
+```
+
 Batch processing from file, with merge and concurrency:
 ```bash
 gemini-tts -f "test.txt" -s zephyr -m -c 5 -o batch-merged.wav
+```
+
+Single output from entire file content (no batch):
+```bash
+gemini-tts -f "test.txt" -s zephyr --single-output -o full-text.wav
 ```
 
 Batch processing from file, without merge (outputs numbered files):
@@ -182,6 +196,8 @@ gemini-tts -t "Hello world" -o - | aplay
 - The pattern must include `*.wav` to ensure only WAV files are processed
 - Recursive patterns (`**/*.wav`) will search subdirectories
 - Either `--text` or `--file` must be provided, but not both
+- `--sayit` is Windows-only and cannot be used with `--file`
+- `--single-output` cannot be used with `--merge`
 - API key must be set in the `GEMINI_API_KEY` environment variable
 
 ## Development

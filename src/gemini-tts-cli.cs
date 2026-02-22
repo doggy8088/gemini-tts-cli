@@ -1,5 +1,5 @@
 ﻿
-// dotnet run -- --text "Hello world" [--instructions "Custom instructions"] [--speaker1 zephyr] [--outputfile output.wav]
+// dotnet run -- --text "Hello world" [--instructions "Custom instructions"] [--speaker1 zephyr] [--outputfile output.wav] [--sayit]
 
 using System.CommandLine;
 using System.CommandLine.Invocation;
@@ -37,6 +37,8 @@ concurrencyOpt.AddAlias("-c");
 var mergeOpt = new Option<bool>("--merge", () => false, "Merge all outputs into single file for batch processing");
 mergeOpt.AddAlias("-m");
 var noCacheOpt = new Option<bool>("--no-cache", () => false, "Disable cache feature and force regeneration");
+var sayItOpt = new Option<bool>("--sayit", () => false, "Play audio directly on Windows instead of writing output file");
+var singleOutputOpt = new Option<bool>("--single-output", () => false, "Output a single WAV from the entire --file content (disables batch mode)");
 
 var root = new RootCommand("Gemini TTS CLI - Convert text to speech using Google Gemini API");
 root.AddOption(instructionsOpt);
@@ -47,12 +49,17 @@ root.AddOption(outputOpt);
 root.AddOption(concurrencyOpt);
 root.AddOption(mergeOpt);
 root.AddOption(noCacheOpt);
+root.AddOption(sayItOpt);
+root.AddOption(singleOutputOpt);
 
 // Add validation to ensure either text or file is provided
 root.AddValidator(result =>
 {
     var text = result.GetValueForOption(textOpt);
     var file = result.GetValueForOption(fileOpt);
+    var sayIt = result.GetValueForOption(sayItOpt);
+    var singleOutput = result.GetValueForOption(singleOutputOpt);
+    var merge = result.GetValueForOption(mergeOpt);
     
     if (string.IsNullOrEmpty(text) && string.IsNullOrEmpty(file))
     {
@@ -61,6 +68,22 @@ root.AddValidator(result =>
     else if (!string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(file))
     {
         result.ErrorMessage = "Cannot specify both --text and --file options. Use one or the other.";
+    }
+    else if (sayIt && (!string.IsNullOrEmpty(file) || GeminiTtsHelpers.IsFileReference(text)))
+    {
+        result.ErrorMessage = "Cannot use --sayit with --file or file reference. Use --text for direct playback.";
+    }
+    else if (singleOutput && !string.IsNullOrEmpty(text) && !GeminiTtsHelpers.IsFileReference(text))
+    {
+        result.ErrorMessage = "Cannot use --single-output with --text. Use --file or @file instead.";
+    }
+    else if (singleOutput && string.IsNullOrEmpty(file) && !GeminiTtsHelpers.IsFileReference(text))
+    {
+        result.ErrorMessage = "Cannot use --single-output without --file or file reference.";
+    }
+    else if (singleOutput && merge)
+    {
+        result.ErrorMessage = "Cannot use --single-output with --merge. Single-output mode disables batch processing.";
     }
 });
 
@@ -133,10 +156,21 @@ mergeCommand.SetHandler((string pattern, string? outputFile) =>
 
 root.AddCommand(mergeCommand);
 
-root.SetHandler(async (string instructions, string speaker1, string? text, string? file, string output, int concurrency, bool merge, bool noCache) =>
+root.SetHandler(async (InvocationContext context) =>
 {
     try
     {
+        var instructions = context.ParseResult.GetValueForOption(instructionsOpt) ?? "";
+        var speaker1 = context.ParseResult.GetValueForOption(speaker1Opt) ?? "";
+        var text = context.ParseResult.GetValueForOption(textOpt);
+        var file = context.ParseResult.GetValueForOption(fileOpt);
+        var output = context.ParseResult.GetValueForOption(outputOpt) ?? "output.wav";
+        var concurrency = context.ParseResult.GetValueForOption(concurrencyOpt);
+        var merge = context.ParseResult.GetValueForOption(mergeOpt);
+        var noCache = context.ParseResult.GetValueForOption(noCacheOpt);
+        var sayIt = context.ParseResult.GetValueForOption(sayItOpt);
+        var singleOutput = context.ParseResult.GetValueForOption(singleOutputOpt);
+
         if (instructions.Contains(":"))
         {
             instructions = instructions.Replace(":", "");
@@ -146,6 +180,11 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
         if (!allowedVoices.Contains(speaker1))
         {
             GeminiTtsHelpers.ExitWithError($"❌ Error: Invalid voice '{speaker1}'. Use 'list-voices' command to see available voices.");
+        }
+
+        if (sayIt && !OperatingSystem.IsWindows())
+        {
+            GeminiTtsHelpers.ExitWithError("❌ Error: --sayit is only supported on Windows.");
         }
 
         // Check if this is a file reference first (before API key validation for better error messages)
@@ -174,21 +213,39 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             
             try
             {
-                var textLines = GeminiTtsHelpers.ReadAndFilterFileLines(filePath);
-                
-                if (textLines.Length == 0)
+                if (singleOutput)
                 {
-                    GeminiTtsHelpers.ExitWithError($"❌ Error: No valid text lines found in file '{filePath}'.");
-                }
+                    var fullText = File.ReadAllText(filePath);
+                    if (string.IsNullOrWhiteSpace(fullText))
+                    {
+                        GeminiTtsHelpers.ExitWithError($"❌ Error: File '{filePath}' has no readable content.");
+                    }
 
-                Console.WriteLine($"📁 Processing file: {filePath}");
-                Console.WriteLine($"📝 Found {textLines.Length} valid text lines");
-                Console.WriteLine($"🎤 Using voice: {speaker1}");
-                Console.WriteLine($"⚡ Concurrency level: {concurrency}");
-                Console.WriteLine($"🔗 Merge mode: {(merge ? "Yes" : "No")}");
-                Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
-                
-                await GeminiTtsHelpers.ProcessBatchTts(instructions, speaker1, textLines, output, concurrency, merge, apiKey, noCache);
+                    Console.WriteLine($"📁 Processing file (single output): {filePath}");
+                    Console.WriteLine($"🎤 Using voice: {speaker1}");
+                    Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
+
+                    await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, fullText, output, apiKey, noCache: noCache);
+                    Console.WriteLine($"✅ Generated {output}");
+                }
+                else
+                {
+                    var textLines = GeminiTtsHelpers.ReadAndFilterFileLines(filePath);
+                    
+                    if (textLines.Length == 0)
+                    {
+                        GeminiTtsHelpers.ExitWithError($"❌ Error: No valid text lines found in file '{filePath}'.");
+                    }
+
+                    Console.WriteLine($"📁 Processing file: {filePath}");
+                    Console.WriteLine($"📝 Found {textLines.Length} valid text lines");
+                    Console.WriteLine($"🎤 Using voice: {speaker1}");
+                    Console.WriteLine($"⚡ Concurrency level: {concurrency}");
+                    Console.WriteLine($"🔗 Merge mode: {(merge ? "Yes" : "No")}");
+                    Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
+                    
+                    await GeminiTtsHelpers.ProcessBatchTts(instructions, speaker1, textLines, output, concurrency, merge, apiKey, noCache);
+                }
             }
             catch (Exception ex)
             {
@@ -207,7 +264,7 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
             // Single text processing (existing logic)
             // Determine voice gender
             var voiceGender = femaleVoices.Contains(speaker1, StringComparer.OrdinalIgnoreCase) ? "Female" : "Male";
-            bool isStdout = output == "-";
+            bool isStdout = !sayIt && output == "-";
 
             if (!isStdout)
             {
@@ -215,14 +272,28 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
                 System.Console.WriteLine($"🎤 Select voice: {speaker1} ({voiceGender})");
                 System.Console.WriteLine($"📝 The TTS Text: {text}");
                 System.Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
+                if (sayIt)
+                {
+                    System.Console.WriteLine("🔊 Playback mode: Windows audio");
+                }
             }
 
             try
             {
-                await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, text!, output, apiKey, noCache: noCache);
-                if (!isStdout)
+                if (sayIt)
                 {
-                    Console.WriteLine($"✅ Generated {output}");
+                    using var wavStream = await GeminiTtsHelpers.GenerateSingleTtsWavStream(instructions, speaker1, text!, apiKey, noCache: noCache);
+                    Console.WriteLine("🔊 Playing audio...");
+                    GeminiTtsHelpers.PlayWavStream(wavStream);
+                    Console.WriteLine("✅ Playback complete");
+                }
+                else
+                {
+                    await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, text!, output, apiKey, noCache: noCache);
+                    if (!isStdout)
+                    {
+                        Console.WriteLine($"✅ Generated {output}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -237,7 +308,7 @@ root.SetHandler(async (string instructions, string speaker1, string? text, strin
         GeminiTtsHelpers.ExitWithError($"❌ Error: An unexpected error occurred. {ex.Message}");
     }
 
-}, instructionsOpt, speaker1Opt, textOpt, fileOpt, outputOpt, concurrencyOpt, mergeOpt, noCacheOpt);
+});
 
 // ---------- Execute ----------
 return await root.InvokeAsync(args);
@@ -298,6 +369,22 @@ public static class GeminiTtsHelpers
         }
     }
 
+    public static void SaveToCache(string cacheKey, Stream sourceStream)
+    {
+        try
+        {
+            var cacheFilePath = GetCacheFilePath(cacheKey);
+            sourceStream.Position = 0;
+            using var cacheFile = File.Create(cacheFilePath);
+            sourceStream.CopyTo(cacheFile);
+            sourceStream.Position = 0;
+        }
+        catch
+        {
+            // Ignore cache save errors
+        }
+    }
+
     public static bool IsFileReference(string? text) => !string.IsNullOrEmpty(text) && (text.StartsWith("@") || text.StartsWith("\"@"));
 
     public static string[] ReadAndFilterFileLines(string filePath)
@@ -311,11 +398,131 @@ public static class GeminiTtsHelpers
             .ToArray();
     }
 
+    private static async Task<byte[]> GeneratePcmBytes(string instructions, string speaker1, string text, string apiKey, int? lineNumber = null, string? textPreview = null, bool writeLogs = true)
+    {
+        // Compose the instruction for Gemini TTS
+        string prompt = instructions + ": " + text;
+
+        // ---------- Compose JSON ----------
+        var payload = new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    role  = "user",
+                    parts = new[] { new { text = prompt } }
+                }
+            },
+            generationConfig = new
+            {
+                responseModalities = new[] { "audio" },
+                temperature = 1,
+                speech_config = new
+                {
+                    voice_config = new
+                    {
+                        prebuilt_voice_config = new { voice_name = Capitalize(speaker1) }
+                    }
+                }
+            }
+        };
+
+        var payloadJson = JsonSerializer.Serialize(payload);
+
+        // ---------- Call API ----------
+        const int maxRetries = 3;
+        int attempt = 0;
+
+        while (attempt < maxRetries)
+        {
+            string json = string.Empty;
+            try
+            {
+                // Create a new request for each attempt
+                var req = new HttpRequestMessage(HttpMethod.Post,
+                    $"v1beta/models/{ModelId}:{ApiPath}?key={apiKey}")
+                {
+                    Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
+                };
+
+                using var res = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+                res.EnsureSuccessStatusCode();
+
+                json = await res.Content.ReadAsStringAsync();
+
+                using var doc = JsonDocument.Parse(json);
+
+                var finishReason = doc.RootElement[0]
+                              .GetProperty("candidates")[0]
+                              .GetProperty("finishReason");
+
+                if (finishReason.GetString() != "STOP")
+                {
+                    var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
+                    if (writeLogs)
+                        Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: The service declined to generate audio for this request.");
+                    attempt++;
+                    await Task.Delay(1000);
+                    continue;
+                }
+
+                var base64 = doc.RootElement[0]
+                              .GetProperty("candidates")[0]
+                              .GetProperty("content")
+                              .GetProperty("parts")[0]
+                              .GetProperty("inlineData")
+                              .GetProperty("data")
+                              .GetString();
+
+                if (string.IsNullOrWhiteSpace(base64))
+                {
+                    var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
+                    if (writeLogs)
+                        Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received empty audio data from the service.");
+                    attempt++;
+                    await Task.Delay(1000);
+                    continue;
+                }
+
+                return Convert.FromBase64String(base64);
+            }
+            catch (HttpRequestException ex)
+            {
+                var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
+                if (writeLogs)
+                    Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Network error occurred. {ex.Message}");
+                attempt++;
+                if (attempt < maxRetries)
+                    await Task.Delay(1000);
+            }
+            catch (JsonException)
+            {
+                var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
+                if (writeLogs)
+                    Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received invalid response from the service.");
+                attempt++;
+                if (attempt < maxRetries)
+                    await Task.Delay(1000);
+            }
+            catch (Exception ex)
+            {
+                var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
+                if (writeLogs)
+                    Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: {ex.Message}");
+                attempt++;
+                if (attempt < maxRetries)
+                    await Task.Delay(1000);
+            }
+        }
+
+        throw new Exception($"Failed to generate audio after {maxRetries} attempts");
+    }
+
     public static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, int? lineNumber = null, string? textPreview = null, bool noCache = false)
 {
-    // Compose the instruction for Gemini TTS
-    string prompt = instructions + ": " + text;
     bool isStdout = output == "-";
+    bool writeLogs = !isStdout;
     
     // Check cache first if not disabled
     if (!noCache)
@@ -326,7 +533,7 @@ public static class GeminiTtsHelpers
             try
             {
                 var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber})" : "";
-                if (!isStdout)
+                if (writeLogs)
                     Console.WriteLine($"🗂️ Using cached result{contextInfo}");
                 
                 if (isStdout)
@@ -347,132 +554,13 @@ public static class GeminiTtsHelpers
             catch
             {
                 // If cache read fails, continue with normal generation
-                if (!isStdout)
+                if (writeLogs)
                     Console.WriteLine($"⚠️ Cache read failed, generating new audio");
             }
         }
     }
 
-    // ---------- Compose JSON ----------
-    var payload = new
-    {
-        contents = new[]
-        {
-            new
-            {
-                role  = "user",
-                parts = new[] { new { text = prompt } }
-            }
-        },
-        generationConfig = new
-        {
-            responseModalities = new[] { "audio" },
-            temperature = 1,
-            speech_config = new
-            {
-                voice_config = new
-                {
-                    prebuilt_voice_config = new { voice_name = Capitalize(speaker1) }
-                }
-            }
-        }
-    };
-
-    var payloadJson = JsonSerializer.Serialize(payload);
-
-    // ---------- Call API ----------
-    const int maxRetries = 3;
-    int attempt = 0;
-    string? base64 = null;
-    byte[]? pcmBytes = null;
-
-    while (attempt < maxRetries)
-    {
-        string json = string.Empty;
-        try
-        {
-            // Create a new request for each attempt
-            var req = new HttpRequestMessage(HttpMethod.Post,
-                $"v1beta/models/{ModelId}:{ApiPath}?key={apiKey}")
-            {
-                Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
-            };
-
-            using var res = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-            res.EnsureSuccessStatusCode();
-
-            json = await res.Content.ReadAsStringAsync();
-
-            using var doc = JsonDocument.Parse(json);
-
-            var finishReason = doc.RootElement[0]
-                          .GetProperty("candidates")[0]
-                          .GetProperty("finishReason");
-
-            if (finishReason.GetString() != "STOP")
-            {
-                var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
-                if (!isStdout)
-                    Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: The service declined to generate audio for this request.");
-                attempt++;
-                await Task.Delay(1000);
-                continue;
-            }
-
-            base64 = doc.RootElement[0]
-                          .GetProperty("candidates")[0]
-                          .GetProperty("content")
-                          .GetProperty("parts")[0]
-                          .GetProperty("inlineData")
-                          .GetProperty("data")
-                          .GetString();
-
-            if (string.IsNullOrWhiteSpace(base64))
-            {
-                var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
-                if (!isStdout)
-                    Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received empty audio data from the service.");
-                attempt++;
-                await Task.Delay(1000);
-                continue;
-            }
-
-            pcmBytes = Convert.FromBase64String(base64);
-            break;
-        }
-        catch (HttpRequestException ex)
-        {
-            var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
-            if (!isStdout)
-                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Network error occurred. {ex.Message}");
-            attempt++;
-            if (attempt < maxRetries)
-                await Task.Delay(1000);
-        }
-        catch (JsonException)
-        {
-            var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
-            if (!isStdout)
-                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received invalid response from the service.");
-            attempt++;
-            if (attempt < maxRetries)
-                await Task.Delay(1000);
-        }
-        catch (Exception ex)
-        {
-            var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
-            if (!isStdout)
-                Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: {ex.Message}");
-            attempt++;
-            if (attempt < maxRetries)
-                await Task.Delay(1000);
-        }
-    }
-
-    if (pcmBytes == null)
-    {
-        throw new Exception($"Failed to generate audio after {maxRetries} attempts");
-    }
+    var pcmBytes = await GeneratePcmBytes(instructions, speaker1, text, apiKey, lineNumber, textPreview, writeLogs);
 
     // ---------- Convert RAW to WAV ----------
     using var ms = new MemoryStream(pcmBytes);
@@ -524,6 +612,84 @@ public static class GeminiTtsHelpers
         return output;
     }
 }
+
+    public static async Task<MemoryStream> GenerateSingleTtsWavStream(string instructions, string speaker1, string text, string apiKey, bool noCache = false)
+    {
+        bool writeLogs = true;
+
+        // Check cache first if not disabled
+        if (!noCache)
+        {
+            var cacheKey = GenerateCacheKey(instructions, speaker1, text);
+            if (TryGetCachedFile(cacheKey, out string cachedFilePath))
+            {
+                try
+                {
+                    if (writeLogs)
+                        Console.WriteLine("🗂️ Using cached result");
+
+                    using var cachedFile = File.OpenRead(cachedFilePath);
+                    var cachedStream = new MemoryStream();
+                    await cachedFile.CopyToAsync(cachedStream);
+                    cachedStream.Position = 0;
+                    return cachedStream;
+                }
+                catch
+                {
+                    if (writeLogs)
+                        Console.WriteLine("⚠️ Cache read failed, generating new audio");
+                }
+            }
+        }
+
+        var pcmBytes = await GeneratePcmBytes(instructions, speaker1, text, apiKey, writeLogs: writeLogs);
+
+        using var ms = new MemoryStream(pcmBytes);
+        using var raw = new RawSourceWaveStream(ms, new WaveFormat(SampleHz, Bits, Channels));
+        var wavStream = new MemoryStream();
+        using var writer = new WaveFileWriter(wavStream, raw.WaveFormat);
+        await raw.CopyToAsync(writer);
+        writer.Flush();
+        wavStream.Position = 0;
+
+        // Save to cache if not disabled
+        if (!noCache)
+        {
+            var cacheKey = GenerateCacheKey(instructions, speaker1, text);
+            SaveToCache(cacheKey, wavStream);
+        }
+
+        return wavStream;
+    }
+
+    public static void PlayWavStream(Stream wavStream)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            ExitWithError("❌ Error: Audio playback is only supported on Windows.");
+        }
+
+        wavStream.Position = 0;
+        using var reader = new WaveFileReader(wavStream);
+        using var outputDevice = new WaveOutEvent();
+        using var playbackDone = new ManualResetEventSlim(false);
+        Exception? playbackError = null;
+
+        outputDevice.PlaybackStopped += (_, e) =>
+        {
+            playbackError = e.Exception;
+            playbackDone.Set();
+        };
+
+        outputDevice.Init(reader);
+        outputDevice.Play();
+        playbackDone.Wait();
+
+        if (playbackError != null)
+        {
+            throw new Exception("Audio playback failed.", playbackError);
+        }
+    }
 
     public static string GenerateNumberedFilename(string baseOutput, int index)
     {
