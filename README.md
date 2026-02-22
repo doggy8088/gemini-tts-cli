@@ -193,6 +193,21 @@ gemini-tts -t "Hello world" -o - | aplay
 3. Build: `dotnet build`
 4. Run: `dotnet run -- --text "Hello world"`
 
+### Versioning (SemVer)
+
+The project version is centralized in `Directory.Build.props` and validated by `Directory.Build.targets`.
+
+Use the helper script to bump versions instead of editing project files manually:
+
+```powershell
+./scripts/bump-version.ps1 -Part patch
+./scripts/bump-version.ps1 -Part minor
+./scripts/bump-version.ps1 -Part major
+./scripts/bump-version.ps1 -Part prerelease -PrereleaseLabel rc
+./scripts/bump-version.ps1 -Part release
+./scripts/bump-version.ps1 -SetVersion 1.2.3
+```
+
 ### Publishing
 
 The project supports two types of builds:

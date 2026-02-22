@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <!-- Centralized SemVer used by pack/publish/release automation -->
+    <Version>0.7.2</Version>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">$(Version)</PackageVersion>
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(Version)</InformationalVersion>
+  </PropertyGroup>
+</Project>

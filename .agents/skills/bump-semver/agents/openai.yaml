@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bump SemVer"
+  short_description: "Bump project semantic version in Directory.Build.props"
+  default_prompt: "Bump the project version using the repo's SemVer workflow."

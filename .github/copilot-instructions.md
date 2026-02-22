@@ -96,7 +96,7 @@ This is a .NET 8.0 C# command-line application that provides text-to-speech func
 - macOS x64 and ARM64
 
 ### Release Process
-- Version updates are managed in `src/gemini-tts-cli.csproj`
+- Version updates are managed in `Directory.Build.props` (validated by `Directory.Build.targets`)
 - GitHub Actions automatically handles cross-platform builds and publishing
 - Tags trigger automated releases to both NuGet and GitHub
 

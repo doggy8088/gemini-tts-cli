@@ -20,14 +20,18 @@ function Resolve-RepoPath {
     return [System.IO.Path]::GetFullPath($fullPath)
 }
 
-function Get-ProjectVersion {
-    param([string]$ProjectFile)
+function Get-CentralVersion {
+    param([string]$VersionFile)
 
-    [xml]$xml = Get-Content -Path $ProjectFile
+    if (-not (Test-Path $VersionFile)) {
+        throw "Version file not found: $VersionFile"
+    }
+
+    [xml]$xml = Get-Content -Path $VersionFile
     $versionNode = $xml.Project.PropertyGroup | ForEach-Object { $_.Version } | Where-Object { $_ } | Select-Object -First 1
 
     if (-not $versionNode) {
-        throw "Unable to find <Version> in $ProjectFile"
+        throw "Unable to find <Version> in $VersionFile"
     }
 
     return [string]$versionNode
@@ -69,6 +73,7 @@ $ProjectFile = Resolve-RepoPath $Project
 $PublishDirFull = Resolve-RepoPath $PublishDir
 $InstallerOutDirFull = Resolve-RepoPath $InstallerOutputDir
 $InstallerScript = Resolve-RepoPath "installer/windows/gemini-tts-cli.iss"
+$VersionFile = Resolve-RepoPath "Directory.Build.props"
 
 if (-not (Test-Path $ProjectFile)) {
     throw "Project file not found: $ProjectFile"
@@ -79,7 +84,7 @@ if (-not (Test-Path $InstallerScript)) {
 }
 
 if (-not $Version) {
-    $Version = Get-ProjectVersion -ProjectFile $ProjectFile
+    $Version = Get-CentralVersion -VersionFile $VersionFile
 }
 
 Write-Host "Repo root: $RepoRoot"

@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <_SemVerValidationPattern>^\d+\.\d+\.\d+(?:-[0-9A-Za-z](?:[0-9A-Za-z.-]*[0-9A-Za-z])?)?(?:\+[0-9A-Za-z](?:[0-9A-Za-z.-]*[0-9A-Za-z])?)?$</_SemVerValidationPattern>
+  </PropertyGroup>
+
+  <Target Name="ValidateCentralSemVer" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(Version)' == ''"
+           Text="Version is not set. Define the project version in Directory.Build.props." />
+    <Error Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(Version)', '$(_SemVerValidationPattern)')) != 'True'"
+           Text="Version '$(Version)' is not valid SemVer. Expected formats like 1.2.3 or 1.2.3-rc.1." />
+  </Target>
+</Project>
