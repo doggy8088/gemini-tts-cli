@@ -40,7 +40,8 @@ mergeOpt.AddAlias("-m");
 var noCacheOpt = new Option<bool>("--no-cache", () => false, "Disable cache feature and force regeneration");
 var sayItOpt = new Option<bool>("--sayit", () => false, "Play audio directly on Windows instead of writing output file");
 var singleOutputOpt = new Option<bool>("--single-output", () => false, "Output a single WAV from the entire --file content (disables batch mode)");
-var versionOpt = new Option<bool>("--version", () => false, "Show version and exit");
+var modelOpt = new Option<string>("--model", () => "gemini-2.5-flash-preview-tts", $"Gemini TTS model ID (default: gemini-2.5-flash-preview-tts)\nAvailable: gemini-2.5-flash-preview-tts, gemini-2.5-pro-preview-tts, gemini-3.1-flash-tts-preview");
+var versionOpt = new Option<bool>("--show-version", () => false, "Show version and exit");
 versionOpt.AddAlias("-v");
 
 var root = new RootCommand("Gemini TTS CLI - Convert text to speech using Google Gemini API");
@@ -54,6 +55,7 @@ root.AddOption(mergeOpt);
 root.AddOption(noCacheOpt);
 root.AddOption(sayItOpt);
 root.AddOption(singleOutputOpt);
+root.AddOption(modelOpt);
 root.AddOption(versionOpt);
 
 // Add validation to ensure either text or file is provided
@@ -180,6 +182,7 @@ root.SetHandler(async (InvocationContext context) =>
         var noCache = context.ParseResult.GetValueForOption(noCacheOpt);
         var sayIt = context.ParseResult.GetValueForOption(sayItOpt);
         var singleOutput = context.ParseResult.GetValueForOption(singleOutputOpt);
+        var model = context.ParseResult.GetValueForOption(modelOpt) ?? "gemini-2.5-flash-preview-tts";
         var showVersion = context.ParseResult.GetValueForOption(versionOpt);
 
         if (showVersion)
@@ -187,6 +190,9 @@ root.SetHandler(async (InvocationContext context) =>
             Console.WriteLine(GeminiTtsHelpers.GetVersionString());
             return;
         }
+
+        // Set the model ID from CLI option
+        GeminiTtsHelpers.ModelId = model;
 
         if (instructions.Contains(":"))
         {
@@ -347,7 +353,7 @@ public static class GeminiTtsHelpers
         Environment.Exit(1);
     }
 
-    public const string ModelId = "gemini-2.5-flash-preview-tts";
+    public static string ModelId = "gemini-2.5-flash-preview-tts";
     public const string ApiPath = "streamGenerateContent";
     public const int SampleHz = 24_000; // 24 kHz
     public const int Bits = 16;
@@ -482,39 +488,57 @@ public static class GeminiTtsHelpers
 
                 using var doc = JsonDocument.Parse(json);
 
-                var finishReason = doc.RootElement[0]
-                              .GetProperty("candidates")[0]
-                              .GetProperty("finishReason");
+                // Streaming response is a JSON array of chunks.
+                // Audio data may appear in earlier chunks while finishReason
+                // appears in a later chunk. Iterate all chunks to collect data.
+                var allBase64Parts = new List<string>();
+                string? lastFinishReason = null;
 
-                if (finishReason.GetString() != "STOP")
+                for (int i = 0; i < doc.RootElement.GetArrayLength(); i++)
                 {
+                    var element = doc.RootElement[i];
+                    if (element.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
+                    {
+                        var candidate = candidates[0];
+
+                        if (candidate.TryGetProperty("finishReason", out var fr))
+                        {
+                            lastFinishReason = fr.GetString();
+                        }
+
+                        if (candidate.TryGetProperty("content", out var content) &&
+                            content.TryGetProperty("parts", out var parts))
+                        {
+                            for (int j = 0; j < parts.GetArrayLength(); j++)
+                            {
+                                if (parts[j].TryGetProperty("inlineData", out var inlineData) &&
+                                    inlineData.TryGetProperty("data", out var dataVal))
+                                {
+                                    var b64 = dataVal.GetString();
+                                    if (!string.IsNullOrEmpty(b64))
+                                        allBase64Parts.Add(b64);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Accept audio data regardless of finishReason
+                if (allBase64Parts.Count > 0)
+                {
+                    return allBase64Parts.SelectMany(b64 => Convert.FromBase64String(b64)).ToArray();
+                }
+
+                // No audio data — retry
+                {
+                    var reason = lastFinishReason ?? "unknown";
                     var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
                     if (writeLogs)
-                        Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: The service declined to generate audio for this request.");
+                        Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: No audio data received (finishReason={reason}).");
                     attempt++;
                     await Task.Delay(1000);
                     continue;
                 }
-
-                var base64 = doc.RootElement[0]
-                              .GetProperty("candidates")[0]
-                              .GetProperty("content")
-                              .GetProperty("parts")[0]
-                              .GetProperty("inlineData")
-                              .GetProperty("data")
-                              .GetString();
-
-                if (string.IsNullOrWhiteSpace(base64))
-                {
-                    var contextInfo = lineNumber.HasValue ? $" (Line {lineNumber}: {textPreview})" : "";
-                    if (writeLogs)
-                        Console.WriteLine($"⚠️ Retry attempt {attempt + 1}{contextInfo}: Received empty audio data from the service.");
-                    attempt++;
-                    await Task.Delay(1000);
-                    continue;
-                }
-
-                return Convert.FromBase64String(base64);
             }
             catch (HttpRequestException ex)
             {
