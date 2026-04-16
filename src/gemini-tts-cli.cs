@@ -40,6 +40,7 @@ mergeOpt.AddAlias("-m");
 var noCacheOpt = new Option<bool>("--no-cache", () => false, "Disable cache feature and force regeneration");
 var sayItOpt = new Option<bool>("--sayit", () => false, "Play audio directly on Windows instead of writing output file");
 var singleOutputOpt = new Option<bool>("--single-output", () => false, "Output a single WAV from the entire --file content (disables batch mode)");
+var speakersOpt = new Option<string?>("--speakers", "Multi-speaker mode: map character names to voices\nFormat: \"Name1:Voice1,Name2:Voice2\"\nExample: --speakers \"Alice:Kore,Bob:Puck\"");
 var modelOpt = new Option<string>("--model", () => "gemini-2.5-flash-preview-tts", "Gemini TTS model ID");
 modelOpt.FromAmong("gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts", "gemini-3.1-flash-tts-preview");
 var versionOpt = new Option<bool>("--show-version", () => false, "Show version and exit");
@@ -56,6 +57,7 @@ root.AddOption(mergeOpt);
 root.AddOption(noCacheOpt);
 root.AddOption(sayItOpt);
 root.AddOption(singleOutputOpt);
+root.AddOption(speakersOpt);
 root.AddOption(modelOpt);
 root.AddOption(versionOpt);
 
@@ -183,6 +185,7 @@ root.SetHandler(async (InvocationContext context) =>
         var noCache = context.ParseResult.GetValueForOption(noCacheOpt);
         var sayIt = context.ParseResult.GetValueForOption(sayItOpt);
         var singleOutput = context.ParseResult.GetValueForOption(singleOutputOpt);
+        var speakers = context.ParseResult.GetValueForOption(speakersOpt);
         var model = context.ParseResult.GetValueForOption(modelOpt)!;
         var showVersion = context.ParseResult.GetValueForOption(versionOpt);
 
@@ -190,6 +193,18 @@ root.SetHandler(async (InvocationContext context) =>
         {
             Console.WriteLine(GeminiTtsHelpers.GetVersionString());
             return;
+        }
+
+        // Parse multi-speaker config
+        Dictionary<string, string>? speakersConfig = null;
+        if (!string.IsNullOrEmpty(speakers))
+        {
+            speakersConfig = GeminiTtsHelpers.ParseSpeakers(speakers, allowedVoices);
+            if (speakersConfig == null || speakersConfig.Count == 0)
+            {
+                GeminiTtsHelpers.ExitWithError("❌ Error: Invalid --speakers format. Use \"Name1:Voice1,Name2:Voice2\" (at least 2 speakers required).");
+            }
+            Console.WriteLine($"🎭 Multi-speaker mode: {string.Join(", ", speakersConfig!.Select(kv => $"{kv.Key}={kv.Value}"))}");
         }
 
         if (instructions.Contains(":"))
@@ -246,7 +261,7 @@ root.SetHandler(async (InvocationContext context) =>
                     Console.WriteLine($"🎤 Using voice: {speaker1}");
                     Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
 
-                    await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, fullText, output, apiKey, model, noCache: noCache);
+                    await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, fullText, output, apiKey, model, speakersConfig, noCache: noCache);
                     Console.WriteLine($"✅ Generated {output}");
                 }
                 else
@@ -265,7 +280,7 @@ root.SetHandler(async (InvocationContext context) =>
                     Console.WriteLine($"🔗 Merge mode: {(merge ? "Yes" : "No")}");
                     Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
                     
-                    await GeminiTtsHelpers.ProcessBatchTts(instructions, speaker1, textLines, output, concurrency, merge, apiKey, model, noCache);
+                    await GeminiTtsHelpers.ProcessBatchTts(instructions, speaker1, textLines, output, concurrency, merge, apiKey, model, speakersConfig, noCache);
                 }
             }
             catch (Exception ex)
@@ -303,7 +318,7 @@ root.SetHandler(async (InvocationContext context) =>
             {
                 if (sayIt)
                 {
-                    using var wavStream = await GeminiTtsHelpers.GenerateSingleTtsWavStream(instructions, speaker1, text!, apiKey, model, noCache: noCache);
+                    using var wavStream = await GeminiTtsHelpers.GenerateSingleTtsWavStream(instructions, speaker1, text!, apiKey, model, speakersConfig, noCache: noCache);
                     Console.WriteLine("🔊 Playing audio...");
                     GeminiTtsHelpers.PlayWavStream(wavStream);
                     Console.WriteLine("✅ Playback complete");
@@ -420,6 +435,30 @@ public static class GeminiTtsHelpers
 
     public static bool IsFileReference(string? text) => !string.IsNullOrEmpty(text) && (text.StartsWith("@") || text.StartsWith("\"@"));
 
+    public static Dictionary<string, string>? ParseSpeakers(string input, HashSet<string> allowedVoices)
+    {
+        var result = new Dictionary<string, string>();
+        var pairs = input.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var pair in pairs)
+        {
+            var parts = pair.Split(':', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length != 2 || string.IsNullOrEmpty(parts[0]) || string.IsNullOrEmpty(parts[1]))
+            {
+                Console.Error.WriteLine($"⚠️ Invalid speaker mapping: \"{pair}\". Expected format: Name:Voice");
+                return null;
+            }
+            var name = parts[0];
+            var voice = parts[1];
+            if (!allowedVoices.Contains(voice))
+            {
+                Console.Error.WriteLine($"⚠️ Unknown voice: \"{voice}\". Use 'list-voices' to see available voices.");
+                return null;
+            }
+            result[name] = voice;
+        }
+        return result.Count >= 2 ? result : null;
+    }
+
     public static string[] ReadAndFilterFileLines(string filePath)
     {
         var lines = File.ReadAllLines(filePath);
@@ -431,35 +470,75 @@ public static class GeminiTtsHelpers
             .ToArray();
     }
 
-    private static async Task<byte[]> GeneratePcmBytes(string instructions, string speaker1, string text, string apiKey, string modelId, int? lineNumber = null, string? textPreview = null, bool writeLogs = true)
+    private static async Task<byte[]> GeneratePcmBytes(string instructions, string speaker1, string text, string apiKey, string modelId, Dictionary<string, string>? speakersConfig = null, int? lineNumber = null, string? textPreview = null, bool writeLogs = true)
     {
         // Compose the instruction for Gemini TTS
         string prompt = instructions + ": " + text;
 
         // ---------- Compose JSON ----------
-        var payload = new
+        object payload;
+
+        if (speakersConfig != null && speakersConfig.Count >= 2)
         {
-            contents = new[]
+            var speakerVoiceConfigs = speakersConfig.Select(kv => new
             {
-                new
+                speaker = kv.Key,
+                voice_config = new
                 {
-                    role  = "user",
-                    parts = new[] { new { text = prompt } }
+                    prebuilt_voice_config = new { voice_name = Capitalize(kv.Value) }
                 }
-            },
-            generationConfig = new
+            }).ToArray();
+
+            payload = new
             {
-                responseModalities = new[] { "audio" },
-                temperature = 1,
-                speech_config = new
+                contents = new[]
                 {
-                    voice_config = new
+                    new
                     {
-                        prebuilt_voice_config = new { voice_name = Capitalize(speaker1) }
+                        role  = "user",
+                        parts = new[] { new { text = prompt } }
+                    }
+                },
+                generationConfig = new
+                {
+                    responseModalities = new[] { "audio" },
+                    temperature = 1,
+                    speech_config = new
+                    {
+                        multi_speaker_voice_config = new
+                        {
+                            speaker_voice_configs = speakerVoiceConfigs
+                        }
                     }
                 }
-            }
-        };
+            };
+        }
+        else
+        {
+            payload = new
+            {
+                contents = new[]
+                {
+                    new
+                    {
+                        role  = "user",
+                        parts = new[] { new { text = prompt } }
+                    }
+                },
+                generationConfig = new
+                {
+                    responseModalities = new[] { "audio" },
+                    temperature = 1,
+                    speech_config = new
+                    {
+                        voice_config = new
+                        {
+                            prebuilt_voice_config = new { voice_name = Capitalize(speaker1) }
+                        }
+                    }
+                }
+            };
+        }
 
         var payloadJson = JsonSerializer.Serialize(payload);
 
@@ -575,7 +654,7 @@ public static class GeminiTtsHelpers
         throw new Exception($"Failed to generate audio after {maxRetries} attempts");
     }
 
-    public static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, string modelId, int? lineNumber = null, string? textPreview = null, bool noCache = false)
+    public static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, string modelId, Dictionary<string, string>? speakersConfig = null, int? lineNumber = null, string? textPreview = null, bool noCache = false)
 {
     bool isStdout = output == "-";
     bool writeLogs = !isStdout;
@@ -616,7 +695,7 @@ public static class GeminiTtsHelpers
         }
     }
 
-    var pcmBytes = await GeneratePcmBytes(instructions, speaker1, text, apiKey, modelId, lineNumber, textPreview, writeLogs);
+    var pcmBytes = await GeneratePcmBytes(instructions, speaker1, text, apiKey, modelId, speakersConfig, lineNumber, textPreview, writeLogs);
 
     // ---------- Convert RAW to WAV ----------
     using var ms = new MemoryStream(pcmBytes);
@@ -669,7 +748,7 @@ public static class GeminiTtsHelpers
     }
 }
 
-    public static async Task<MemoryStream> GenerateSingleTtsWavStream(string instructions, string speaker1, string text, string apiKey, string modelId, bool noCache = false)
+    public static async Task<MemoryStream> GenerateSingleTtsWavStream(string instructions, string speaker1, string text, string apiKey, string modelId, Dictionary<string, string>? speakersConfig = null, bool noCache = false)
     {
         bool writeLogs = true;
 
@@ -698,7 +777,7 @@ public static class GeminiTtsHelpers
             }
         }
 
-        var pcmBytes = await GeneratePcmBytes(instructions, speaker1, text, apiKey, modelId, writeLogs: writeLogs);
+        var pcmBytes = await GeneratePcmBytes(instructions, speaker1, text, apiKey, modelId, speakersConfig, writeLogs: writeLogs);
 
         using var ms = new MemoryStream(pcmBytes);
         using var raw = new RawSourceWaveStream(ms, new WaveFormat(SampleHz, Bits, Channels));
@@ -763,7 +842,7 @@ public static class GeminiTtsHelpers
     return Path.Combine(directory, numberedName);
 }
 
-    public static async Task ProcessBatchTts(string instructions, string speaker1, string[] textLines, string baseOutput, int concurrency, bool merge, string apiKey, string modelId, bool noCache = false)
+    public static async Task ProcessBatchTts(string instructions, string speaker1, string[] textLines, string baseOutput, int concurrency, bool merge, string apiKey, string modelId, Dictionary<string, string>? speakersConfig = null, bool noCache = false)
     {
         Console.WriteLine($"📚 Processing {textLines.Length} lines with concurrency level {concurrency}");
         
@@ -789,7 +868,7 @@ public static class GeminiTtsHelpers
                 {
                     Console.WriteLine($"🎵 Processing line {index}: {text.Substring(0, Math.Min(50, text.Length))}...");
                     var textPreview = text.Substring(0, Math.Min(30, text.Length)) + (text.Length > 30 ? "..." : "");
-                    return await GenerateSingleTts(instructions, speaker1, text, outputFile, apiKey, modelId, index, textPreview, noCache);
+                    return await GenerateSingleTts(instructions, speaker1, text, outputFile, apiKey, modelId, speakersConfig, index, textPreview, noCache);
                 }
                 finally
                 {
