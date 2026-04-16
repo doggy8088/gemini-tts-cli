@@ -40,7 +40,8 @@ mergeOpt.AddAlias("-m");
 var noCacheOpt = new Option<bool>("--no-cache", () => false, "Disable cache feature and force regeneration");
 var sayItOpt = new Option<bool>("--sayit", () => false, "Play audio directly on Windows instead of writing output file");
 var singleOutputOpt = new Option<bool>("--single-output", () => false, "Output a single WAV from the entire --file content (disables batch mode)");
-var modelOpt = new Option<string>("--model", () => "gemini-2.5-flash-preview-tts", $"Gemini TTS model ID (default: gemini-2.5-flash-preview-tts)\nAvailable: gemini-2.5-flash-preview-tts, gemini-2.5-pro-preview-tts, gemini-3.1-flash-tts-preview");
+var modelOpt = new Option<string>("--model", () => "gemini-2.5-flash-preview-tts", "Gemini TTS model ID");
+modelOpt.FromAmong("gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts", "gemini-3.1-flash-tts-preview");
 var versionOpt = new Option<bool>("--show-version", () => false, "Show version and exit");
 versionOpt.AddAlias("-v");
 
@@ -182,7 +183,7 @@ root.SetHandler(async (InvocationContext context) =>
         var noCache = context.ParseResult.GetValueForOption(noCacheOpt);
         var sayIt = context.ParseResult.GetValueForOption(sayItOpt);
         var singleOutput = context.ParseResult.GetValueForOption(singleOutputOpt);
-        var model = context.ParseResult.GetValueForOption(modelOpt) ?? "gemini-2.5-flash-preview-tts";
+        var model = context.ParseResult.GetValueForOption(modelOpt)!;
         var showVersion = context.ParseResult.GetValueForOption(versionOpt);
 
         if (showVersion)
@@ -190,9 +191,6 @@ root.SetHandler(async (InvocationContext context) =>
             Console.WriteLine(GeminiTtsHelpers.GetVersionString());
             return;
         }
-
-        // Set the model ID from CLI option
-        GeminiTtsHelpers.ModelId = model;
 
         if (instructions.Contains(":"))
         {
@@ -248,7 +246,7 @@ root.SetHandler(async (InvocationContext context) =>
                     Console.WriteLine($"🎤 Using voice: {speaker1}");
                     Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
 
-                    await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, fullText, output, apiKey, noCache: noCache);
+                    await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, fullText, output, apiKey, model, noCache: noCache);
                     Console.WriteLine($"✅ Generated {output}");
                 }
                 else
@@ -267,7 +265,7 @@ root.SetHandler(async (InvocationContext context) =>
                     Console.WriteLine($"🔗 Merge mode: {(merge ? "Yes" : "No")}");
                     Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
                     
-                    await GeminiTtsHelpers.ProcessBatchTts(instructions, speaker1, textLines, output, concurrency, merge, apiKey, noCache);
+                    await GeminiTtsHelpers.ProcessBatchTts(instructions, speaker1, textLines, output, concurrency, merge, apiKey, model, noCache);
                 }
             }
             catch (Exception ex)
@@ -305,14 +303,14 @@ root.SetHandler(async (InvocationContext context) =>
             {
                 if (sayIt)
                 {
-                    using var wavStream = await GeminiTtsHelpers.GenerateSingleTtsWavStream(instructions, speaker1, text!, apiKey, noCache: noCache);
+                    using var wavStream = await GeminiTtsHelpers.GenerateSingleTtsWavStream(instructions, speaker1, text!, apiKey, model, noCache: noCache);
                     Console.WriteLine("🔊 Playing audio...");
                     GeminiTtsHelpers.PlayWavStream(wavStream);
                     Console.WriteLine("✅ Playback complete");
                 }
                 else
                 {
-                    await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, text!, output, apiKey, noCache: noCache);
+                    await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, text!, output, apiKey, model, noCache: noCache);
                     if (!isStdout)
                     {
                         Console.WriteLine($"✅ Generated {output}");
@@ -353,7 +351,7 @@ public static class GeminiTtsHelpers
         Environment.Exit(1);
     }
 
-    public static string ModelId = "gemini-2.5-flash-preview-tts";
+    public const string DefaultModelId = "gemini-2.5-flash-preview-tts";
     public const string ApiPath = "streamGenerateContent";
     public const int SampleHz = 24_000; // 24 kHz
     public const int Bits = 16;
@@ -433,7 +431,7 @@ public static class GeminiTtsHelpers
             .ToArray();
     }
 
-    private static async Task<byte[]> GeneratePcmBytes(string instructions, string speaker1, string text, string apiKey, int? lineNumber = null, string? textPreview = null, bool writeLogs = true)
+    private static async Task<byte[]> GeneratePcmBytes(string instructions, string speaker1, string text, string apiKey, string modelId, int? lineNumber = null, string? textPreview = null, bool writeLogs = true)
     {
         // Compose the instruction for Gemini TTS
         string prompt = instructions + ": " + text;
@@ -476,7 +474,7 @@ public static class GeminiTtsHelpers
             {
                 // Create a new request for each attempt
                 var req = new HttpRequestMessage(HttpMethod.Post,
-                    $"v1beta/models/{ModelId}:{ApiPath}?key={apiKey}")
+                    $"v1beta/models/{modelId}:{ApiPath}?key={apiKey}")
                 {
                     Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
                 };
@@ -526,7 +524,12 @@ public static class GeminiTtsHelpers
                 // Accept audio data regardless of finishReason
                 if (allBase64Parts.Count > 0)
                 {
-                    return allBase64Parts.SelectMany(b64 => Convert.FromBase64String(b64)).ToArray();
+                    var allBytes = new List<byte>();
+                    foreach (var b64 in allBase64Parts)
+                    {
+                        allBytes.AddRange(Convert.FromBase64String(b64));
+                    }
+                    return allBytes.ToArray();
                 }
 
                 // No audio data — retry
@@ -572,7 +575,7 @@ public static class GeminiTtsHelpers
         throw new Exception($"Failed to generate audio after {maxRetries} attempts");
     }
 
-    public static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, int? lineNumber = null, string? textPreview = null, bool noCache = false)
+    public static async Task<string> GenerateSingleTts(string instructions, string speaker1, string text, string output, string apiKey, string modelId, int? lineNumber = null, string? textPreview = null, bool noCache = false)
 {
     bool isStdout = output == "-";
     bool writeLogs = !isStdout;
@@ -613,7 +616,7 @@ public static class GeminiTtsHelpers
         }
     }
 
-    var pcmBytes = await GeneratePcmBytes(instructions, speaker1, text, apiKey, lineNumber, textPreview, writeLogs);
+    var pcmBytes = await GeneratePcmBytes(instructions, speaker1, text, apiKey, modelId, lineNumber, textPreview, writeLogs);
 
     // ---------- Convert RAW to WAV ----------
     using var ms = new MemoryStream(pcmBytes);
@@ -666,7 +669,7 @@ public static class GeminiTtsHelpers
     }
 }
 
-    public static async Task<MemoryStream> GenerateSingleTtsWavStream(string instructions, string speaker1, string text, string apiKey, bool noCache = false)
+    public static async Task<MemoryStream> GenerateSingleTtsWavStream(string instructions, string speaker1, string text, string apiKey, string modelId, bool noCache = false)
     {
         bool writeLogs = true;
 
@@ -695,7 +698,7 @@ public static class GeminiTtsHelpers
             }
         }
 
-        var pcmBytes = await GeneratePcmBytes(instructions, speaker1, text, apiKey, writeLogs: writeLogs);
+        var pcmBytes = await GeneratePcmBytes(instructions, speaker1, text, apiKey, modelId, writeLogs: writeLogs);
 
         using var ms = new MemoryStream(pcmBytes);
         using var raw = new RawSourceWaveStream(ms, new WaveFormat(SampleHz, Bits, Channels));
@@ -760,7 +763,7 @@ public static class GeminiTtsHelpers
     return Path.Combine(directory, numberedName);
 }
 
-    public static async Task ProcessBatchTts(string instructions, string speaker1, string[] textLines, string baseOutput, int concurrency, bool merge, string apiKey, bool noCache = false)
+    public static async Task ProcessBatchTts(string instructions, string speaker1, string[] textLines, string baseOutput, int concurrency, bool merge, string apiKey, string modelId, bool noCache = false)
     {
         Console.WriteLine($"📚 Processing {textLines.Length} lines with concurrency level {concurrency}");
         
@@ -786,7 +789,7 @@ public static class GeminiTtsHelpers
                 {
                     Console.WriteLine($"🎵 Processing line {index}: {text.Substring(0, Math.Min(50, text.Length))}...");
                     var textPreview = text.Substring(0, Math.Min(30, text.Length)) + (text.Length > 30 ? "..." : "");
-                    return await GenerateSingleTts(instructions, speaker1, text, outputFile, apiKey, index, textPreview, noCache);
+                    return await GenerateSingleTts(instructions, speaker1, text, outputFile, apiKey, modelId, index, textPreview, noCache);
                 }
                 finally
                 {
