@@ -5,6 +5,24 @@ namespace GeminiTtsCli.Tests;
 public class AudioProcessingTests
 {
     [Fact]
+    public void CreateMacOsPlaybackProcessStartInfo_ShouldUseAfplay()
+    {
+        // Arrange
+        var wavPath = "/tmp/test.wav";
+
+        // Act
+        var startInfo = GeminiTtsHelpers.CreateMacOsPlaybackProcessStartInfo(wavPath);
+
+        // Assert
+        Assert.Equal("afplay", startInfo.FileName);
+        Assert.False(startInfo.UseShellExecute);
+        Assert.True(startInfo.RedirectStandardError);
+        Assert.True(startInfo.RedirectStandardOutput);
+        Assert.Single(startInfo.ArgumentList);
+        Assert.Equal(wavPath, startInfo.ArgumentList[0]);
+    }
+
+    [Fact]
     public void MergeWavFiles_ShouldMergeMultipleWavFiles()
     {
         // Arrange

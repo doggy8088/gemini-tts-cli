@@ -89,6 +89,7 @@ This folder contains comprehensive examples demonstrating all features and use c
 - [Basic TTS](./basic-tts/) - Start here for simple conversion
 - [Voice Listing](./voice-listing/) - Explore available voices
 - [Custom Voice and Instructions](./custom-voice-and-instructions/) - Learn customization
+- `--sayit` direct playback is available for single-text usage on Windows and macOS
 
 ### **Intermediate Examples**
 - [Batch Processing](./batch-processing/) - Process multiple texts
@@ -182,7 +183,7 @@ To add new examples:
 ### Common Issues:
 - **API Key Not Set**: Ensure `GEMINI_API_KEY` environment variable is set
 - **Permission Denied**: Run `chmod +x run.sh` on Linux/macOS
-- **Audio Not Playing**: Check your system's audio player and file associations
+- **Audio Not Playing**: Check your system audio output; `--sayit` uses built-in playback on Windows and `afplay` on macOS
 - **Script Execution Policy**: Run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` on Windows
 
 ### Getting Help:

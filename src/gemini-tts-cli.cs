@@ -3,6 +3,8 @@
 
 using System.CommandLine;
 using System.CommandLine.Invocation;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -39,7 +41,7 @@ concurrencyOpt.AddAlias("-c");
 var mergeOpt = new Option<bool>("--merge", () => false, "Merge all outputs into single file for batch processing");
 mergeOpt.AddAlias("-m");
 var noCacheOpt = new Option<bool>("--no-cache", () => false, "Disable cache feature and force regeneration");
-var sayItOpt = new Option<bool>("--sayit", () => false, "Play audio directly on Windows instead of writing output file");
+var sayItOpt = new Option<bool>("--sayit", () => false, "Play audio directly on Windows or macOS instead of writing output file");
 var singleOutputOpt = new Option<bool>("--single-output", () => false, "Output a single WAV from the entire --file content (disables batch mode)");
 var speakersOpt = new Option<string?>("--speakers", "Multi-speaker mode: map character names to voices\nFormat: \"Name1:Voice1,Name2:Voice2\"\nExample: --speakers \"Alice:Kore,Bob:Puck\"");
 var modelOpt = new Option<string>("--model", () => GeminiTtsHelpers.DefaultModelId, "Gemini TTS model ID");
@@ -219,9 +221,9 @@ root.SetHandler(async (InvocationContext context) =>
             GeminiTtsHelpers.ExitWithError($"❌ Error: Invalid voice '{speaker1}'. Use 'list-voices' command to see available voices.");
         }
 
-        if (sayIt && !OperatingSystem.IsWindows())
+        if (sayIt && !GeminiTtsHelpers.IsSayItSupportedPlatform())
         {
-            GeminiTtsHelpers.ExitWithError("❌ Error: --sayit is only supported on Windows.");
+            GeminiTtsHelpers.ExitWithError("❌ Error: --sayit is only supported on Windows and macOS.");
         }
 
         // Check if this is a file reference first (before API key validation for better error messages)
@@ -311,7 +313,7 @@ root.SetHandler(async (InvocationContext context) =>
                 System.Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
                 if (sayIt)
                 {
-                    System.Console.WriteLine("🔊 Playback mode: Windows audio");
+                    System.Console.WriteLine($"🔊 Playback mode: {GeminiTtsHelpers.GetSayItPlaybackDescription()}");
                 }
             }
 
@@ -383,6 +385,26 @@ public static class GeminiTtsHelpers
         }
 
         return assembly.GetName().Version?.ToString() ?? "unknown";
+    }
+
+    public static bool IsSayItSupportedPlatform()
+    {
+        return OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+    }
+
+    public static string GetSayItPlaybackDescription()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return "Windows audio";
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            return "macOS audio (afplay)";
+        }
+
+        return "unsupported";
     }
 
     // Cache methods
@@ -807,31 +829,95 @@ public static class GeminiTtsHelpers
 
     public static void PlayWavStream(Stream wavStream)
     {
-        if (!OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows())
         {
-            ExitWithError("❌ Error: Audio playback is only supported on Windows.");
+            wavStream.Position = 0;
+            using var reader = new WaveFileReader(wavStream);
+            using var outputDevice = new WaveOutEvent();
+            using var playbackDone = new ManualResetEventSlim(false);
+            Exception? playbackError = null;
+
+            outputDevice.PlaybackStopped += (_, e) =>
+            {
+                playbackError = e.Exception;
+                playbackDone.Set();
+            };
+
+            outputDevice.Init(reader);
+            outputDevice.Play();
+            playbackDone.Wait();
+
+            if (playbackError != null)
+            {
+                throw new Exception("Audio playback failed.", playbackError);
+            }
+
+            return;
         }
 
-        wavStream.Position = 0;
-        using var reader = new WaveFileReader(wavStream);
-        using var outputDevice = new WaveOutEvent();
-        using var playbackDone = new ManualResetEventSlim(false);
-        Exception? playbackError = null;
-
-        outputDevice.PlaybackStopped += (_, e) =>
+        if (OperatingSystem.IsMacOS())
         {
-            playbackError = e.Exception;
-            playbackDone.Set();
+            var tempFile = Path.Combine(Path.GetTempPath(), $"gemini-tts-playback-{Guid.NewGuid():N}.wav");
+
+            try
+            {
+                wavStream.Position = 0;
+                using (var tempOutput = File.Create(tempFile))
+                {
+                    wavStream.CopyTo(tempOutput);
+                }
+
+                using var process = Process.Start(CreateMacOsPlaybackProcessStartInfo(tempFile));
+                if (process == null)
+                {
+                    throw new InvalidOperationException("Failed to start macOS audio playback.");
+                }
+
+                process.WaitForExit();
+
+                if (process.ExitCode != 0)
+                {
+                    var errorOutput = process.StandardError.ReadToEnd().Trim();
+                    throw new Exception(string.IsNullOrEmpty(errorOutput)
+                        ? $"macOS audio playback failed with exit code {process.ExitCode}."
+                        : $"macOS audio playback failed with exit code {process.ExitCode}: {errorOutput}");
+                }
+            }
+            catch (Win32Exception ex)
+            {
+                throw new Exception("macOS audio playback requires the built-in 'afplay' command.", ex);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(tempFile))
+                    {
+                        File.Delete(tempFile);
+                    }
+                }
+                catch
+                {
+                    // Ignore temp file cleanup errors
+                }
+            }
+
+            return;
+        }
+
+        ExitWithError("❌ Error: Audio playback is only supported on Windows and macOS.");
+    }
+
+    public static ProcessStartInfo CreateMacOsPlaybackProcessStartInfo(string wavFilePath)
+    {
+        var startInfo = new ProcessStartInfo("afplay")
+        {
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
         };
-
-        outputDevice.Init(reader);
-        outputDevice.Play();
-        playbackDone.Wait();
-
-        if (playbackError != null)
-        {
-            throw new Exception("Audio playback failed.", playbackError);
-        }
+        startInfo.ArgumentList.Add(wavFilePath);
+        return startInfo;
     }
 
     public static string GenerateNumberedFilename(string baseOutput, int index)

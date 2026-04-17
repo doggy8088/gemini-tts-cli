@@ -54,5 +54,6 @@ This uses:
 
 ## Next Steps
 
+- For direct playback without creating `output.wav`, run `gemini-tts --text "Hello world" --sayit` on Windows or macOS
 - Try the [custom-voice-and-instructions](../custom-voice-and-instructions/) example to learn about voice selection and custom instructions
 - See the [voice-listing](../voice-listing/) example to explore available voices
