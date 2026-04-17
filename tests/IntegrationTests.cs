@@ -43,7 +43,7 @@ public class IntegrationTests
         try
         {
             // Act
-            var result = await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, text, output, apiKey);
+            var result = await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, text, output, apiKey, GeminiTtsHelpers.DefaultModelId);
 
             // Assert
             Assert.Equal(output, result);

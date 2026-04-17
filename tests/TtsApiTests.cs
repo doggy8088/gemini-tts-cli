@@ -24,15 +24,17 @@ public class TtsApiTests
             
             // Verify parameters
             var parameters = method.GetParameters();
-            Assert.Equal(8, parameters.Length);
-            Assert.Equal(typeof(string), parameters[0].ParameterType); // instructions
-            Assert.Equal(typeof(string), parameters[1].ParameterType); // speaker1
-            Assert.Equal(typeof(string), parameters[2].ParameterType); // text
-            Assert.Equal(typeof(string), parameters[3].ParameterType); // output
-            Assert.Equal(typeof(string), parameters[4].ParameterType); // apiKey
-            Assert.Equal(typeof(int?), parameters[5].ParameterType);   // lineNumber
-            Assert.Equal(typeof(string), parameters[6].ParameterType); // textPreview
-            Assert.Equal(typeof(bool), parameters[7].ParameterType);   // noCache
+            Assert.Equal(10, parameters.Length);
+            Assert.Equal(typeof(string), parameters[0].ParameterType);                     // instructions
+            Assert.Equal(typeof(string), parameters[1].ParameterType);                     // speaker1
+            Assert.Equal(typeof(string), parameters[2].ParameterType);                     // text
+            Assert.Equal(typeof(string), parameters[3].ParameterType);                     // output
+            Assert.Equal(typeof(string), parameters[4].ParameterType);                     // apiKey
+            Assert.Equal(typeof(string), parameters[5].ParameterType);                     // modelId
+            Assert.Equal(typeof(Dictionary<string, string>), parameters[6].ParameterType); // speakersConfig
+            Assert.Equal(typeof(int?), parameters[7].ParameterType);                       // lineNumber
+            Assert.Equal(typeof(string), parameters[8].ParameterType);                     // textPreview
+            Assert.Equal(typeof(bool), parameters[9].ParameterType);                       // noCache
         }
         finally
         {
@@ -84,15 +86,17 @@ public class TtsApiTests
         Assert.Equal(typeof(Task), method.ReturnType);
         
         var parameters = method.GetParameters();
-        Assert.Equal(8, parameters.Length);
-        Assert.Equal(typeof(string), parameters[0].ParameterType);   // instructions
-        Assert.Equal(typeof(string), parameters[1].ParameterType);   // speaker1
-        Assert.Equal(typeof(string[]), parameters[2].ParameterType); // textLines
-        Assert.Equal(typeof(string), parameters[3].ParameterType);   // baseOutput
-        Assert.Equal(typeof(int), parameters[4].ParameterType);      // concurrency
-        Assert.Equal(typeof(bool), parameters[5].ParameterType);     // merge
-        Assert.Equal(typeof(string), parameters[6].ParameterType);   // apiKey
-        Assert.Equal(typeof(bool), parameters[7].ParameterType);     // noCache
+        Assert.Equal(10, parameters.Length);
+        Assert.Equal(typeof(string), parameters[0].ParameterType);                     // instructions
+        Assert.Equal(typeof(string), parameters[1].ParameterType);                     // speaker1
+        Assert.Equal(typeof(string[]), parameters[2].ParameterType);                   // textLines
+        Assert.Equal(typeof(string), parameters[3].ParameterType);                     // baseOutput
+        Assert.Equal(typeof(int), parameters[4].ParameterType);                        // concurrency
+        Assert.Equal(typeof(bool), parameters[5].ParameterType);                       // merge
+        Assert.Equal(typeof(string), parameters[6].ParameterType);                     // apiKey
+        Assert.Equal(typeof(string), parameters[7].ParameterType);                     // modelId
+        Assert.Equal(typeof(Dictionary<string, string>), parameters[8].ParameterType); // speakersConfig
+        Assert.Equal(typeof(bool), parameters[9].ParameterType);                       // noCache
     }
 }
 
@@ -102,7 +106,7 @@ public class ConstantsTests
     public void Constants_ShouldHaveExpectedValues()
     {
         // Assert
-        Assert.Equal("gemini-2.5-flash-preview-tts", GeminiTtsHelpers.ModelId);
+        Assert.Equal("gemini-3.1-flash-tts-preview", GeminiTtsHelpers.DefaultModelId);
         Assert.Equal("streamGenerateContent", GeminiTtsHelpers.ApiPath);
         Assert.Equal(24_000, GeminiTtsHelpers.SampleHz);
         Assert.Equal(16, GeminiTtsHelpers.Bits);
