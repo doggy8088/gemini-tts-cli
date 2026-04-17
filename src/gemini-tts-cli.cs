@@ -867,21 +867,25 @@ public static class GeminiTtsHelpers
                     wavStream.CopyTo(tempOutput);
                 }
 
-                using var process = Process.Start(CreateMacOsPlaybackProcessStartInfo(tempFile));
+                var process = Process.Start(CreateMacOsPlaybackProcessStartInfo(tempFile));
                 if (process == null)
                 {
                     throw new InvalidOperationException("Failed to start macOS audio playback.");
                 }
 
-                process.WaitForExit();
-
-                if (process.ExitCode != 0)
+                using (process)
                 {
-                    throw new Exception($"macOS audio playback failed with exit code {process.ExitCode}.");
+                    process.WaitForExit();
+
+                    if (process.ExitCode != 0)
+                    {
+                        throw new Exception($"macOS audio playback failed with exit code {process.ExitCode}.");
+                    }
                 }
             }
             catch (Win32Exception ex)
             {
+                // .NET throws Win32Exception for process start failures on all platforms, including macOS.
                 throw new Exception("macOS audio playback requires the built-in 'afplay' command.", ex);
             }
             finally
