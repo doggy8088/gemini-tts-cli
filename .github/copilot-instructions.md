@@ -1,6 +1,6 @@
 # Gemini TTS CLI Development Guidelines
 
-This is a .NET 8.0 C# command-line application that provides text-to-speech functionality using Google's Gemini TTS API. The tool supports multiple voice options, cross-platform deployment, and both NuGet distribution and self-contained executables. Please follow these guidelines when contributing:
+This is a .NET 10.0 C# command-line application that provides text-to-speech functionality using Google's Gemini TTS API. The tool supports multiple voice options, cross-platform deployment, and both NuGet distribution and self-contained executables. Please follow these guidelines when contributing:
 
 ## Code Standards
 
@@ -29,7 +29,7 @@ This is a .NET 8.0 C# command-line application that provides text-to-speech func
 - `LICENSE`: MIT license
 
 ## Key Technologies & Dependencies
-- **Framework**: .NET 8.0 with C# top-level programs
+- **Framework**: .NET 10.0 with C# top-level programs
 - **CLI Framework**: System.CommandLine (v2.0.0-beta4.22272.1) for argument parsing
 - **Audio Processing**: NAudio (v2.2.1) for WAV file generation and PCM audio handling
 - **API Integration**: Google Gemini 2.5 Flash Preview TTS model
@@ -113,7 +113,7 @@ This is a .NET 8.0 C# command-line application that provides text-to-speech func
 3. Ensure proper error handling for API failures
 
 ### Updating Dependencies
-1. Use compatible versions that support .NET 8.0
+1. Use compatible versions that support .NET 10.0
 2. Test cross-platform builds after dependency updates
 3. Update both regular and self-contained deployment configurations
 

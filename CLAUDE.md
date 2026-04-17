@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a single-file .NET 8.0 CLI application (`src/gemini-tts-cli.cs`) that provides text-to-speech functionality using Google's Gemini TTS API. The architecture is intentionally simple with all functionality contained in one file.
+This is a single-file .NET 10.0 CLI application (`src/gemini-tts-cli.cs`) that provides text-to-speech functionality using Google's Gemini TTS API. The architecture is intentionally simple with all functionality contained in one file.
 
 ### Key Components
 
@@ -90,7 +90,7 @@ Test dependencies: xUnit, Moq, NAudio, System.CommandLine
 
 ## Environment Requirements
 
-- .NET 8.0 runtime
+- .NET 10.0 runtime
 - `GEMINI_API_KEY` environment variable for API access
 - Cross-platform compatibility (Windows, Linux, macOS)
 
