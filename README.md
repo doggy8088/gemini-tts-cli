@@ -25,6 +25,15 @@ A command-line interface tool for text-to-speech conversion using Google's Gemin
 dotnet tool install -g GeminiTtsCli
 ```
 
+### Via `dotnet dnx` (No Installation)
+
+```bash
+dotnet dnx GeminiTtsCli "Text to convert"
+dotnet dnx GeminiTtsCli "@input.txt"
+```
+
+The first bare argument is treated as a shortcut for `--text`. When the value starts with `@`, it is treated as a file reference, so `@input.txt` works as a quick shortcut for file-based input.
+
 ### Windows Installer (.exe)
 
 Download the Windows installer from the [releases page](https://github.com/doggy8088/gemini-tts-cli/releases) and run `gemini-tts-cli-<version>-win-x64-setup.exe`.
@@ -42,7 +51,7 @@ Download the appropriate binary for your platform from the [releases page](https
 
 1. **Google AI Studio API Key**: You need to obtain an API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. **Environment Variable**: Set the `GEMINI_API_KEY` environment variable with your API key
-3. **.NET 10**: Required for building from source and for installing/running the .NET global tool
+3. **.NET 10**: Required for building from source and for installing/running the .NET global tool or `dotnet dnx`
 
 ### Setting up the API Key
 
@@ -72,6 +81,20 @@ To make it permanent, add the export line to your shell profile (`.bashrc`, `.zs
 
 ```bash
 gemini-tts -t "Text to convert" [-i "Your instructions"] [-s <voice-name>] [-o output.wav] [--sayit]
+```
+
+### Quick Execution via `dotnet dnx`
+
+```bash
+dotnet dnx GeminiTtsCli "Text to convert"
+dotnet dnx GeminiTtsCli "@input.txt"
+```
+
+Use the usual options after the shortcut argument when needed, for example:
+
+```bash
+dotnet dnx GeminiTtsCli "Hello world" -s zephyr -o hello.wav
+dotnet dnx GeminiTtsCli "@input.txt" --single-output -o full-text.wav
 ```
 
 ### Batch Processing from File
@@ -132,6 +155,16 @@ gemini-tts -i "Read aloud in a warm, professional and friendly tone" -s achird -
 With minimal required parameters (uses defaults):
 ```bash
 gemini-tts -t "Hello, this is a test of the Gemini TTS system"
+```
+
+Run directly with `dotnet dnx` (no prior installation):
+```bash
+dotnet dnx GeminiTtsCli "Hello, this is a test of the Gemini TTS system"
+```
+
+Use a file reference shortcut with `dotnet dnx`:
+```bash
+dotnet dnx GeminiTtsCli "@test.txt"
 ```
 
 With specific voice but default instructions:

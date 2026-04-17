@@ -338,7 +338,8 @@ root.SetHandler(async (InvocationContext context) =>
 });
 
 // ---------- Execute ----------
-return await root.InvokeAsync(args);
+var normalizedArgs = GeminiTtsHelpers.NormalizeShortcutArgs(args);
+return await root.InvokeAsync(normalizedArgs);
 
 // ---------- Helper functions class ----------
 public static class GeminiTtsHelpers
@@ -445,6 +446,56 @@ public static class GeminiTtsHelpers
     }
 
     public static bool IsFileReference(string? text) => !string.IsNullOrEmpty(text) && (text.StartsWith("@") || text.StartsWith("\"@"));
+
+    public static string[] NormalizeShortcutArgs(string[] args)
+    {
+        if (args.Length == 0)
+        {
+            return args;
+        }
+
+        var normalizedArgs = args.ToList();
+        var firstArg = normalizedArgs[0];
+
+        if (ShouldTreatFirstArgAsText(firstArg))
+        {
+            normalizedArgs.Insert(0, "--text");
+            normalizedArgs[1] = NormalizeTextArgument(normalizedArgs[1]);
+        }
+        else
+        {
+            for (var i = 1; i < normalizedArgs.Count; i++)
+            {
+                if (IsTextOption(normalizedArgs[i - 1]) && IsFileReference(normalizedArgs[i]))
+                {
+                    normalizedArgs[i] = NormalizeTextArgument(normalizedArgs[i]);
+                }
+            }
+        }
+
+        return normalizedArgs.ToArray();
+    }
+
+    private static bool ShouldTreatFirstArgAsText(string firstArg) =>
+        !string.IsNullOrWhiteSpace(firstArg) &&
+        !firstArg.StartsWith("-", StringComparison.Ordinal) &&
+        !string.Equals(firstArg, "help", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(firstArg, "list-voices", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(firstArg, "merge", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsTextOption(string arg) =>
+        string.Equals(arg, "--text", StringComparison.Ordinal) ||
+        string.Equals(arg, "-t", StringComparison.Ordinal);
+
+    private static string NormalizeTextArgument(string value)
+    {
+        if (!IsFileReference(value))
+        {
+            return value;
+        }
+
+        return $"\"{value.Trim('"')}\"";
+    }
 
     public static string? ValidateRootCommandOptions(string? text, string? file, bool sayIt, bool singleOutput, bool merge)
     {
