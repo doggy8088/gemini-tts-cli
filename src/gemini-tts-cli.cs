@@ -864,13 +864,14 @@ public static class GeminiTtsHelpers
                 wavStream.Position = 0;
                 using (var tempOutput = File.Create(tempFile))
                 {
+                    File.SetUnixFileMode(tempFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
                     wavStream.CopyTo(tempOutput);
                 }
 
                 var process = Process.Start(CreateMacOsPlaybackProcessStartInfo(tempFile));
                 if (process == null)
                 {
-                    throw new InvalidOperationException("Failed to start macOS audio playback.");
+                    throw new InvalidOperationException("Failed to start macOS audio playback. Verify that the built-in 'afplay' command is available and not restricted by your system configuration.");
                 }
 
                 using (process)
@@ -885,8 +886,8 @@ public static class GeminiTtsHelpers
             }
             catch (Win32Exception ex)
             {
-                // .NET throws Win32Exception for process start failures on all platforms, including macOS.
-                throw new Exception("macOS audio playback requires the built-in 'afplay' command.", ex);
+                // .NET throws Win32Exception for process start failures on all platforms, including unexpected macOS `afplay` launch failures.
+                throw new Exception("Unexpected failure starting macOS audio playback. Verify that the built-in 'afplay' command is available and not restricted by your system configuration.", ex);
             }
             finally
             {
