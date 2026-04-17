@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Diagnostics.CodeAnalysis;
 
 using NAudio.Wave;
+using NAudio.Utils;
 
 // Voice categorization
 var femaleVoices = new[] { "achernar", "aoede", "autonoe", "callirrhoe", "despina", "erinome", "gacrux", "kore", "laomedeia", "leda", "sulafat", "zephyr", "pulcherrima", "vindemiatrix" };
@@ -779,12 +780,19 @@ public static class GeminiTtsHelpers
 
         var pcmBytes = await GeneratePcmBytes(instructions, speaker1, text, apiKey, modelId, speakersConfig, writeLogs: writeLogs);
 
-        using var ms = new MemoryStream(pcmBytes);
-        using var raw = new RawSourceWaveStream(ms, new WaveFormat(SampleHz, Bits, Channels));
-        var wavStream = new MemoryStream();
-        using var writer = new WaveFileWriter(wavStream, raw.WaveFormat);
-        await raw.CopyToAsync(writer);
-        writer.Flush();
+        byte[] wavBytes;
+        using (var ms = new MemoryStream(pcmBytes))
+        using (var raw = new RawSourceWaveStream(ms, new WaveFormat(SampleHz, Bits, Channels)))
+        using (var tempStream = new MemoryStream())
+        {
+            using (var writer = new WaveFileWriter(new IgnoreDisposeStream(tempStream), raw.WaveFormat))
+            {
+                await raw.CopyToAsync(writer);
+                writer.Flush();
+            }
+            wavBytes = tempStream.ToArray();
+        }
+        var wavStream = new MemoryStream(wavBytes);
         wavStream.Position = 0;
 
         // Save to cache if not disabled
