@@ -42,6 +42,7 @@ Download the appropriate binary for your platform from the [releases page](https
 
 1. **Google AI Studio API Key**: You need to obtain an API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. **Environment Variable**: Set the `GEMINI_API_KEY` environment variable with your API key
+3. **.NET 10**: Required for building from source and for installing/running the .NET global tool
 
 ### Setting up the API Key
 

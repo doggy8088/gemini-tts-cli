@@ -103,7 +103,7 @@ This folder contains comprehensive examples demonstrating all features and use c
 ## 🔧 Prerequisites
 
 ### Required for All Examples
-- .NET 8.0 or later
+- .NET 10.0 or later
 - Gemini TTS CLI tool installed
 - Internet connection for API calls
 

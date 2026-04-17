@@ -31,7 +31,7 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '8.0.x'
+        dotnet-version: '10.0.x'
 
     - name: Restore dependencies
       run: dotnet restore src/gemini-tts-cli.csproj
@@ -42,14 +42,14 @@ jobs:
     - name: Test build artifacts
       run: |
         if [ "$RUNNER_OS" = "Windows" ]; then
-          if [ -f "src/bin/Release/net8.0/gemini-tts-cli.exe" ]; then
+          if [ -f "src/bin/Release/net10.0/gemini-tts-cli.exe" ]; then
             echo "✅ Build artifact found for Windows"
           else
             echo "❌ Build artifact not found for Windows"
             exit 1
           fi
         else
-          if [ -f "src/bin/Release/net8.0/gemini-tts-cli" ] || [ -f "src/bin/Release/net8.0/gemini-tts-cli.dll" ]; then
+          if [ -f "src/bin/Release/net10.0/gemini-tts-cli" ] || [ -f "src/bin/Release/net10.0/gemini-tts-cli.dll" ]; then
             echo "✅ Build artifact found for ${{ matrix.name }}"
           else
             echo "❌ Build artifact not found for ${{ matrix.name }}"
