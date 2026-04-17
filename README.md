@@ -77,7 +77,7 @@ gemini-tts -t "Text to convert" [-i "Your instructions"] [-s <voice-name>] [-o o
 ### Batch Processing from File
 
 ```bash
-gemini-tts -f "input.txt" [-i "Your instructions"] [-s <voice-name>] [-m] [-c 20] [-o output.wav] [--single-output]
+gemini-tts -f "input.txt" [-i "Your instructions"] [-s <voice-name>] [-m] [-c 20] [-o output.wav] [--single-output] [--sayit]
 ```
 
 ### Merge WAV Files
@@ -99,7 +99,7 @@ gemini-tts list-voices
 - `-i`, `--instructions` (optional): Instructions for the TTS conversion (default: "Read aloud in a warm, professional and friendly tone")
 - `-s`, `--speaker1` (optional): Voice name for the speaker (default: random selection from available voices)
 - `-o`, `--outputfile` (optional): Output WAV filename (default: output.wav). Use "-" for stdout output
-- `--sayit` (optional): Play audio directly on Windows or macOS and skip file output (single text only)
+- `--sayit` (optional): Play audio directly on Windows or macOS and skip file output. With `--file`, the entire file is played as one stream
 - `--single-output` (optional): Output a single WAV from the entire `--file` content (disables batch mode)
 - `-v`, `--version` (optional): Show version and exit
 - `-c`, `--concurrency` (optional): Concurrent API requests for batch processing (default: 1)
@@ -142,6 +142,11 @@ gemini-tts -s zephyr -t "Hello, this is a test of the Gemini TTS system" -o gree
 Play audio directly on Windows or macOS (no output file):
 ```bash
 gemini-tts -t "Hello, this is a test of the Gemini TTS system" --sayit
+```
+
+Play an entire text file directly on Windows or macOS (no output file):
+```bash
+gemini-tts -f "test.txt" -s zephyr --sayit
 ```
 
 Batch processing from file, with merge and concurrency:
@@ -203,9 +208,11 @@ gemini-tts -t "Hello world" -o - | aplay
 - The pattern must include `*.wav` to ensure only WAV files are processed
 - Recursive patterns (`**/*.wav`) will search subdirectories
 - Either `--text` or `--file` must be provided, but not both
-- `--sayit` is supported on Windows and macOS, and cannot be used with `--file`
+- `--sayit` is supported on Windows and macOS
 - On macOS, `--sayit` uses the built-in `afplay` command for playback
+- `--sayit` with `--file` plays the full file as a single stream instead of batch-generating WAV files
 - `--single-output` cannot be used with `--merge`
+- `--sayit` cannot be used with `--merge`
 - API key must be set in the `GEMINI_API_KEY` environment variable
 
 ## Development

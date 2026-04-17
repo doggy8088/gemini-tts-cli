@@ -41,7 +41,7 @@ concurrencyOpt.AddAlias("-c");
 var mergeOpt = new Option<bool>("--merge", () => false, "Merge all outputs into single file for batch processing");
 mergeOpt.AddAlias("-m");
 var noCacheOpt = new Option<bool>("--no-cache", () => false, "Disable cache feature and force regeneration");
-var sayItOpt = new Option<bool>("--sayit", () => false, "Play audio directly on Windows or macOS instead of writing output file");
+var sayItOpt = new Option<bool>("--sayit", () => false, "Play audio directly on Windows or macOS instead of writing output file. With --file, plays the full file as a single stream");
 var singleOutputOpt = new Option<bool>("--single-output", () => false, "Output a single WAV from the entire --file content (disables batch mode)");
 var speakersOpt = new Option<string?>("--speakers", "Multi-speaker mode: map character names to voices\nFormat: \"Name1:Voice1,Name2:Voice2\"\nExample: --speakers \"Alice:Kore,Bob:Puck\"");
 var modelOpt = new Option<string>("--model", () => GeminiTtsHelpers.DefaultModelId, "Gemini TTS model ID");
@@ -79,30 +79,7 @@ root.AddValidator(result =>
     var singleOutput = result.GetValueForOption(singleOutputOpt);
     var merge = result.GetValueForOption(mergeOpt);
     
-    if (string.IsNullOrEmpty(text) && string.IsNullOrEmpty(file))
-    {
-        result.ErrorMessage = "Either --text or --file option must be provided.";
-    }
-    else if (!string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(file))
-    {
-        result.ErrorMessage = "Cannot specify both --text and --file options. Use one or the other.";
-    }
-    else if (sayIt && (!string.IsNullOrEmpty(file) || GeminiTtsHelpers.IsFileReference(text)))
-    {
-        result.ErrorMessage = "Cannot use --sayit with --file or file reference. Use --text for direct playback.";
-    }
-    else if (singleOutput && !string.IsNullOrEmpty(text) && !GeminiTtsHelpers.IsFileReference(text))
-    {
-        result.ErrorMessage = "Cannot use --single-output with --text. Use --file or @file instead.";
-    }
-    else if (singleOutput && string.IsNullOrEmpty(file) && !GeminiTtsHelpers.IsFileReference(text))
-    {
-        result.ErrorMessage = "Cannot use --single-output without --file or file reference.";
-    }
-    else if (singleOutput && merge)
-    {
-        result.ErrorMessage = "Cannot use --single-output with --merge. Single-output mode disables batch processing.";
-    }
+    result.ErrorMessage = GeminiTtsHelpers.ValidateRootCommandOptions(text, file, sayIt, singleOutput, merge);
 });
 
 // Add list-voices command
@@ -252,7 +229,8 @@ root.SetHandler(async (InvocationContext context) =>
             
             try
             {
-                if (singleOutput)
+                var useSingleFileAudio = singleOutput || sayIt;
+                if (useSingleFileAudio)
                 {
                     var fullText = File.ReadAllText(filePath);
                     if (string.IsNullOrWhiteSpace(fullText))
@@ -260,12 +238,22 @@ root.SetHandler(async (InvocationContext context) =>
                         GeminiTtsHelpers.ExitWithError($"❌ Error: File '{filePath}' has no readable content.");
                     }
 
-                    Console.WriteLine($"📁 Processing file (single output): {filePath}");
+                    Console.WriteLine($"📁 Processing file ({(sayIt ? "playback" : "single output")}): {filePath}");
                     Console.WriteLine($"🎤 Using voice: {speaker1}");
                     Console.WriteLine($"🗂️ Cache mode: {(noCache ? "Disabled" : "Enabled")}");
-
-                    await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, fullText, output, apiKey, model, speakersConfig, noCache: noCache);
-                    Console.WriteLine($"✅ Generated {output}");
+                    if (sayIt)
+                    {
+                        Console.WriteLine($"🔊 Playback mode: {GeminiTtsHelpers.GetSayItPlaybackDescription()}");
+                        using var wavStream = await GeminiTtsHelpers.GenerateSingleTtsWavStream(instructions, speaker1, fullText, apiKey, model, speakersConfig, noCache: noCache);
+                        Console.WriteLine("🔊 Playing audio...");
+                        GeminiTtsHelpers.PlayWavStream(wavStream);
+                        Console.WriteLine("✅ Playback complete");
+                    }
+                    else
+                    {
+                        await GeminiTtsHelpers.GenerateSingleTts(instructions, speaker1, fullText, output, apiKey, model, speakersConfig, noCache: noCache);
+                        Console.WriteLine($"✅ Generated {output}");
+                    }
                 }
                 else
                 {
@@ -457,6 +445,41 @@ public static class GeminiTtsHelpers
     }
 
     public static bool IsFileReference(string? text) => !string.IsNullOrEmpty(text) && (text.StartsWith("@") || text.StartsWith("\"@"));
+
+    public static string? ValidateRootCommandOptions(string? text, string? file, bool sayIt, bool singleOutput, bool merge)
+    {
+        if (string.IsNullOrEmpty(text) && string.IsNullOrEmpty(file))
+        {
+            return "Either --text or --file option must be provided.";
+        }
+
+        if (!string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(file))
+        {
+            return "Cannot specify both --text and --file options. Use one or the other.";
+        }
+
+        if (singleOutput && !string.IsNullOrEmpty(text) && !IsFileReference(text))
+        {
+            return "Cannot use --single-output with --text. Use --file or @file instead.";
+        }
+
+        if (singleOutput && string.IsNullOrEmpty(file) && !IsFileReference(text))
+        {
+            return "Cannot use --single-output without --file or file reference.";
+        }
+
+        if (singleOutput && merge)
+        {
+            return "Cannot use --single-output with --merge. Single-output mode disables batch processing.";
+        }
+
+        if (sayIt && merge)
+        {
+            return "Cannot use --sayit with --merge. Playback mode does not write batch outputs.";
+        }
+
+        return null;
+    }
 
     public static Dictionary<string, string>? ParseSpeakers(string input, HashSet<string> allowedVoices)
     {
