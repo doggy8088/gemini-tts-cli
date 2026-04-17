@@ -877,10 +877,7 @@ public static class GeminiTtsHelpers
 
                 if (process.ExitCode != 0)
                 {
-                    var errorOutput = process.StandardError.ReadToEnd().Trim();
-                    throw new Exception(string.IsNullOrEmpty(errorOutput)
-                        ? $"macOS audio playback failed with exit code {process.ExitCode}."
-                        : $"macOS audio playback failed with exit code {process.ExitCode}: {errorOutput}");
+                    throw new Exception($"macOS audio playback failed with exit code {process.ExitCode}.");
                 }
             }
             catch (Win32Exception ex)
@@ -913,10 +910,10 @@ public static class GeminiTtsHelpers
         var startInfo = new ProcessStartInfo("afplay")
         {
             UseShellExecute = false,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true
+            RedirectStandardError = false,
+            RedirectStandardOutput = false,
+            ArgumentList = { wavFilePath }
         };
-        startInfo.ArgumentList.Add(wavFilePath);
         return startInfo;
     }
 

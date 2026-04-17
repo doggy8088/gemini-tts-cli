@@ -16,8 +16,8 @@ public class AudioProcessingTests
         // Assert
         Assert.Equal("afplay", startInfo.FileName);
         Assert.False(startInfo.UseShellExecute);
-        Assert.True(startInfo.RedirectStandardError);
-        Assert.True(startInfo.RedirectStandardOutput);
+        Assert.False(startInfo.RedirectStandardError);
+        Assert.False(startInfo.RedirectStandardOutput);
         Assert.Single(startInfo.ArgumentList);
         Assert.Equal(wavPath, startInfo.ArgumentList[0]);
     }
